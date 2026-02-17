@@ -3,6 +3,7 @@ import SwiftData
 
 struct InboxTriageView: View {
     @Binding var selectedItem: Item?
+    var openedItem: Binding<Item?>?
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.createdAt, order: .reverse) private var allItems: [Item]
     @Query(sort: \Board.sortOrder) private var boards: [Board]
@@ -50,6 +51,10 @@ struct InboxTriageView: View {
                             onDrop: { dropItem(item) }
                         )
                         .id(item.id)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                            removal: .opacity.combined(with: .move(edge: .trailing))
+                        ))
                         .onTapGesture {
                             focusedIndex = index
                             selectedItem = item
@@ -57,6 +62,7 @@ struct InboxTriageView: View {
                     }
                 }
                 .padding()
+                .animation(.easeInOut(duration: 0.25), value: inboxItems.map(\.id))
             }
             .onChange(of: focusedIndex) { _, newIndex in
                 let items = inboxItems
@@ -126,6 +132,16 @@ struct InboxTriageView: View {
                 .keyboardShortcut("3", modifiers: [])
                 .opacity(0)
                 .frame(width: 0, height: 0)
+
+            // Enter — Open selected item
+            Button("") {
+                let items = inboxItems
+                guard focusedIndex >= 0, focusedIndex < items.count else { return }
+                openedItem?.wrappedValue = items[focusedIndex]
+            }
+            .keyboardShortcut(.return, modifiers: [])
+            .opacity(0)
+            .frame(width: 0, height: 0)
         }
     }
 

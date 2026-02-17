@@ -26,6 +26,9 @@ struct GroveApp: App {
         }
         .modelContainer(modelContainer)
         .defaultSize(width: 1200, height: 800)
+        .commands {
+            GroveMenuCommands()
+        }
 
         MenuBarExtra("Grove", systemImage: "leaf") {
             MenuBarView()
@@ -41,6 +44,61 @@ struct GroveApp: App {
         .windowResizability(.contentSize)
         .defaultPosition(.center)
         .keyboardShortcut("k", modifiers: [.command, .shift])
+    }
+}
+
+// MARK: - Menu Bar Commands
+
+struct GroveMenuCommands: Commands {
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("New Note") {
+                NotificationCenter.default.post(name: .groveNewNote, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            Divider()
+
+            Button("Quick Capture") {
+                NotificationCenter.default.post(name: .groveQuickCapture, object: nil)
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
+        }
+
+        CommandMenu("Navigate") {
+            Button("Search") {
+                NotificationCenter.default.post(name: .groveToggleSearch, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
+            Divider()
+
+            Button("Go to Inbox") {
+                NotificationCenter.default.post(name: .groveGoToInbox, object: nil)
+            }
+            .keyboardShortcut("0", modifiers: .command)
+
+            // Board switching Cmd+1 through Cmd+9
+            ForEach(1...9, id: \.self) { index in
+                Button("Go to Board \(index)") {
+                    NotificationCenter.default.post(name: .groveGoToBoard, object: index)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(index)")), modifiers: .command)
+            }
+
+            Divider()
+
+            Button("Go to Tags") {
+                NotificationCenter.default.post(name: .groveGoToTags, object: nil)
+            }
+        }
+
+        CommandMenu("View") {
+            Button("Toggle Inspector") {
+                NotificationCenter.default.post(name: .groveToggleInspector, object: nil)
+            }
+            .keyboardShortcut("]", modifiers: .command)
+        }
     }
 }
 

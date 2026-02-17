@@ -245,7 +245,7 @@
       "id": "S15",
       "title": "Keyboard Shortcuts and Polish",
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "description": "Full keyboard navigation, consistent styling, and final polish pass.",
       "acceptanceCriteria": [
         "⌘+Shift+K: Quick capture",

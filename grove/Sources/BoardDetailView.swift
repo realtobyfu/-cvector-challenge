@@ -39,6 +39,16 @@ struct BoardDetailView: View {
     @State private var selectedFilterTags: Set<UUID> = []
     @State private var collapsedSections: Set<String> = []
 
+    /// Flat ordered list of all visible items for J/K navigation
+    private var flatVisibleItems: [Item] {
+        var result: [Item] = []
+        for cluster in tagClusters {
+            guard !collapsedSections.contains(cluster.label) else { continue }
+            result.append(contentsOf: sortItems(cluster.items))
+        }
+        return result
+    }
+
     // MARK: - Computed Properties
 
     private var allBoardTags: [Tag] {
@@ -101,6 +111,50 @@ struct BoardDetailView: View {
         .sheet(isPresented: $showNewNoteSheet) {
             newNoteSheet
         }
+        .background(boardKeyboardHandlers)
+    }
+
+    // MARK: - Keyboard Handlers (J/K/Enter)
+
+    private var boardKeyboardHandlers: some View {
+        Group {
+            // J — select next item
+            Button("") { navigateItems(by: 1) }
+                .keyboardShortcut("j", modifiers: [])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+
+            // K — select previous item
+            Button("") { navigateItems(by: -1) }
+                .keyboardShortcut("k", modifiers: [])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+
+            // Enter — open selected item
+            Button("") { openSelectedItem() }
+                .keyboardShortcut(.return, modifiers: [])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+        }
+    }
+
+    private func navigateItems(by offset: Int) {
+        let items = flatVisibleItems
+        guard !items.isEmpty else { return }
+
+        if let current = selectedItem,
+           let currentIndex = items.firstIndex(where: { $0.id == current.id }) {
+            let newIndex = max(0, min(items.count - 1, currentIndex + offset))
+            selectedItem = items[newIndex]
+        } else {
+            // No selection — select first or last depending on direction
+            selectedItem = offset > 0 ? items.first : items.last
+        }
+    }
+
+    private func openSelectedItem() {
+        guard let item = selectedItem else { return }
+        openedItem = item
     }
 
     // MARK: - Tag Filter Bar
@@ -273,8 +327,10 @@ struct BoardDetailView: View {
                                         ? RoundedRectangle(cornerRadius: 8).strokeBorder(.blue, lineWidth: 2)
                                         : nil
                                 )
+                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                     }
+                    .animation(.easeInOut(duration: 0.2), value: sortedItems.map(\.id))
 
                 case .list:
                     VStack(spacing: 0) {
@@ -289,6 +345,7 @@ struct BoardDetailView: View {
                                     selectedItem = item
                                 }
                                 .background(selectedItem?.id == item.id ? Color.accentColor.opacity(0.1) : Color.clear)
+                                .transition(.opacity.combined(with: .slide))
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -296,6 +353,7 @@ struct BoardDetailView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(.quaternary, lineWidth: 1)
                     )
+                    .animation(.easeInOut(duration: 0.2), value: sortedItems.map(\.id))
                 }
             }
         }

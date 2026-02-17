@@ -52,9 +52,11 @@ struct ContentView: View {
                         if let selectedItem {
                             InspectorPanelView(item: selectedItem)
                                 .frame(width: 280)
+                                .transition(.move(edge: .trailing))
                         } else {
                             InspectorEmptyView()
                                 .frame(width: 280)
+                                .transition(.move(edge: .trailing))
                         }
                     }
                 }
@@ -67,8 +69,7 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "sidebar.trailing")
                         }
-                        .help(showInspector ? "Hide Inspector" : "Show Inspector")
-                        .keyboardShortcut("]", modifiers: .command)
+                        .help(showInspector ? "Hide Inspector (⌘])" : "Show Inspector (⌘])")
                     }
                 }
 
@@ -77,7 +78,9 @@ struct ContentView: View {
                     Color.black.opacity(0.2)
                         .ignoresSafeArea()
                         .onTapGesture {
-                            showSearch = false
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showSearch = false
+                            }
                         }
 
                     VStack {
@@ -120,19 +123,30 @@ struct ContentView: View {
                 selectedItem = note
             }
         }
-        .keyboardShortcut(for: .newNote) {
+        .onReceive(NotificationCenter.default.publisher(for: .groveNewNote)) { _ in
             showNewNoteSheet = true
         }
-        .background(
-            Button("") {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    showSearch.toggle()
-                }
+        .onReceive(NotificationCenter.default.publisher(for: .groveToggleSearch)) { _ in
+            withAnimation(.easeOut(duration: 0.2)) {
+                showSearch.toggle()
             }
-            .keyboardShortcut("f", modifiers: .command)
-            .opacity(0)
-            .frame(width: 0, height: 0)
-        )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .groveToggleInspector)) { _ in
+            withAnimation {
+                showInspector.toggle()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .groveGoToInbox)) { _ in
+            selection = .inbox
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .groveGoToBoard)) { notification in
+            if let index = notification.object as? Int, index >= 1, index <= boards.count {
+                selection = .board(boards[index - 1].id)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .groveGoToTags)) { _ in
+            selection = .tags
+        }
         .onAppear {
             guard !hasGeneratedNudges else { return }
             hasGeneratedNudges = true
@@ -158,7 +172,7 @@ struct ContentView: View {
         } else {
             switch selection {
             case .inbox:
-                InboxTriageView(selectedItem: $selectedItem)
+                InboxTriageView(selectedItem: $selectedItem, openedItem: $openedItem)
             case .board(let boardID):
                 if let board = boards.first(where: { $0.id == boardID }) {
                     BoardDetailView(board: board, selectedItem: $selectedItem, openedItem: $openedItem)
@@ -721,19 +735,3 @@ struct InspectorEmptyView: View {
     }
 }
 
-// MARK: - Keyboard Shortcut Modifier
-
-enum GroveShortcut {
-    case newNote
-}
-
-extension View {
-    func keyboardShortcut(for shortcut: GroveShortcut, action: @escaping () -> Void) -> some View {
-        self.background(
-            Button("") { action() }
-                .keyboardShortcut("n", modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-        )
-    }
-}
