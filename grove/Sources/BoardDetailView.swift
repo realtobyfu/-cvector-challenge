@@ -21,10 +21,10 @@ enum BoardSortOption: String, CaseIterable {
 
 struct BoardDetailView: View {
     let board: Board
+    @Binding var selectedItem: Item?
     @Environment(\.modelContext) private var modelContext
     @State private var viewMode: BoardViewMode = .grid
     @State private var sortOption: BoardSortOption = .dateAdded
-    @State private var selectedItem: Item?
     @State private var showNewNoteSheet = false
 
     private var sortedItems: [Item] {

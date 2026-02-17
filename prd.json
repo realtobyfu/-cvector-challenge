@@ -62,7 +62,7 @@
       "id": "S4",
       "title": "Item Creation and Board Detail View",
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "description": "Create note items manually and display items in a board grid/list view.",
       "acceptanceCriteria": [
         "New Note button (⌘+N) creates a note Item and opens it for editing",
@@ -79,7 +79,7 @@
       "id": "S5",
       "title": "Inspector Panel",
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "description": "Show and edit item details in the right inspector panel.",
       "acceptanceCriteria": [
         "Selecting an item in the board view populates the inspector",
