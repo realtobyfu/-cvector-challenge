@@ -269,7 +269,7 @@
       "id": "S16",
       "title": "[v1.5] Connection Suggestions",
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "description": "AI-powered suggestions for connections between items after capture or annotation.",
       "acceptanceCriteria": [
         "After saving a new item or annotation, a ConnectionSuggestionService analyzes it against existing items",

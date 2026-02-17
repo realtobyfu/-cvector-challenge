@@ -9,29 +9,65 @@ struct ItemReaderView: View {
     @State private var editingAnnotationID: UUID?
     @State private var editAnnotationText = ""
     @State private var isEditingContent = false
+    @State private var connectionSuggestions: [ConnectionSuggestion] = []
+    @State private var showSuggestions = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header
-                itemHeader
+        ZStack(alignment: .topTrailing) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header
+                    itemHeader
 
-                Divider()
-                    .padding(.horizontal)
+                    Divider()
+                        .padding(.horizontal)
 
-                // Content
-                itemContent
-                    .padding()
+                    // Content
+                    itemContent
+                        .padding()
 
-                Divider()
-                    .padding(.horizontal)
+                    Divider()
+                        .padding(.horizontal)
 
-                // Annotations section
-                annotationsSection
-                    .padding()
+                    // Annotations section
+                    annotationsSection
+                        .padding()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            // Connection suggestion popover
+            if showSuggestions && !connectionSuggestions.isEmpty {
+                ConnectionSuggestionPopover(
+                    sourceItem: item,
+                    suggestions: connectionSuggestions,
+                    onAccept: { suggestion in
+                        acceptSuggestion(suggestion)
+                    },
+                    onDismiss: { suggestion in
+                        dismissSuggestion(suggestion)
+                    },
+                    onDismissAll: {
+                        dismissAllSuggestions()
+                    }
+                )
+                .padding(.top, 8)
+                .padding(.trailing, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            // Show suggestions for recently created/captured items
+            let recency = Date().timeIntervalSince(item.createdAt)
+            if recency < 30 {
+                triggerSuggestions()
+            }
+        }
+        .onChange(of: item.id) {
+            // Reset suggestions when switching items
+            showSuggestions = false
+            connectionSuggestions = []
+        }
     }
 
     // MARK: - Header
@@ -49,7 +85,12 @@ struct ItemReaderView: View {
 
                 if item.type == .note {
                     Button {
+                        let wasEditing = isEditingContent
                         isEditingContent.toggle()
+                        // Trigger suggestions when finishing an edit
+                        if wasEditing {
+                            triggerSuggestions()
+                        }
                     } label: {
                         Label(isEditingContent ? "Done" : "Edit", systemImage: isEditingContent ? "checkmark" : "pencil")
                             .font(.caption)
@@ -291,6 +332,9 @@ struct ItemReaderView: View {
 
         newAnnotationText = ""
         isAddingAnnotation = false
+
+        // Trigger connection suggestions after annotation save
+        triggerSuggestions()
     }
 
     private func saveEditedAnnotation(_ annotation: Annotation) {
@@ -310,6 +354,54 @@ struct ItemReaderView: View {
         modelContext.delete(annotation)
         item.updatedAt = .now
         try? modelContext.save()
+    }
+
+    // MARK: - Connection Suggestions
+
+    private func triggerSuggestions() {
+        let service = ConnectionSuggestionService(modelContext: modelContext)
+        let suggestions = service.suggestConnections(for: item)
+        if !suggestions.isEmpty {
+            withAnimation(.easeOut(duration: 0.25)) {
+                connectionSuggestions = suggestions
+                showSuggestions = true
+            }
+        }
+    }
+
+    private func acceptSuggestion(_ suggestion: ConnectionSuggestion) {
+        let viewModel = ItemViewModel(modelContext: modelContext)
+        _ = viewModel.createConnection(source: item, target: suggestion.targetItem, type: suggestion.suggestedType)
+        let service = ConnectionSuggestionService(modelContext: modelContext)
+        service.recordAccepted(sourceItem: item, targetItem: suggestion.targetItem)
+        withAnimation {
+            connectionSuggestions.removeAll { $0.id == suggestion.id }
+            if connectionSuggestions.isEmpty {
+                showSuggestions = false
+            }
+        }
+    }
+
+    private func dismissSuggestion(_ suggestion: ConnectionSuggestion) {
+        let service = ConnectionSuggestionService(modelContext: modelContext)
+        service.dismissSuggestion(sourceItemID: item.id, targetItemID: suggestion.targetItem.id)
+        withAnimation {
+            connectionSuggestions.removeAll { $0.id == suggestion.id }
+            if connectionSuggestions.isEmpty {
+                showSuggestions = false
+            }
+        }
+    }
+
+    private func dismissAllSuggestions() {
+        let service = ConnectionSuggestionService(modelContext: modelContext)
+        for suggestion in connectionSuggestions {
+            service.dismissSuggestion(sourceItemID: item.id, targetItemID: suggestion.targetItem.id)
+        }
+        withAnimation {
+            connectionSuggestions = []
+            showSuggestions = false
+        }
     }
 }
 
