@@ -355,7 +355,7 @@
       "id": "S21",
       "title": "[v2] Course Tracking",
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "description": "First-class support for lecture series and courses with progress tracking.",
       "acceptanceCriteria": [
         "New content type: Course — a container for ordered courseLecture items",

@@ -8,6 +8,7 @@ struct NudgeSettingsView: View {
     @State private var staleInboxEnabled = NudgeSettings.staleInboxEnabled
     @State private var connectionPromptEnabled = NudgeSettings.connectionPromptEnabled
     @State private var streakEnabled = NudgeSettings.streakEnabled
+    @State private var continueCourseEnabled = NudgeSettings.continueCourseEnabled
     @State private var scheduleIntervalHours = NudgeSettings.scheduleIntervalHours
     @State private var maxNudgesPerDay = NudgeSettings.maxNudgesPerDay
 
@@ -53,6 +54,14 @@ struct NudgeSettingsView: View {
                 Text("Celebrates consecutive days of engagement with a board.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("Continue Course", isOn: $continueCourseEnabled)
+                    .onChange(of: continueCourseEnabled) { _, newValue in
+                        NudgeSettings.continueCourseEnabled = newValue
+                    }
+                Text("Reminds you to continue your next lecture in a course.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Schedule") {
@@ -79,6 +88,7 @@ struct NudgeSettingsView: View {
                 analyticsRow(type: .staleInbox, label: "Stale Inbox")
                 analyticsRow(type: .connectionPrompt, label: "Connection Prompts")
                 analyticsRow(type: .streak, label: "Streaks")
+                analyticsRow(type: .continueCourse, label: "Continue Course")
             }
         }
         .formStyle(.grouped)

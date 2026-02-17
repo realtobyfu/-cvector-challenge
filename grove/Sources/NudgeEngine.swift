@@ -49,6 +49,9 @@ final class NudgeEngine {
         if NudgeSettings.streakEnabled {
             generateStreakNudge()
         }
+        if NudgeSettings.continueCourseEnabled {
+            generateContinueCourseNudge()
+        }
     }
 
     // MARK: - Daily Limit Helpers
@@ -285,6 +288,63 @@ final class NudgeEngine {
         }
 
         return dayCount
+    }
+
+    // MARK: - Continue Course Nudge
+
+    /// For each course with a next uncompleted lecture, creates a nudge like:
+    /// "Lecture 5 of MIT 6.824 is next. It covers fault tolerance — you have 2 saved articles on that topic."
+    private func generateContinueCourseNudge() {
+        guard canCreateNudge() else { return }
+
+        let allCourses = (try? modelContext.fetch(FetchDescriptor<Course>())) ?? []
+        let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
+
+        // Don't create if there's already a pending/shown continueCourse nudge
+        let hasPending = allNudges.contains {
+            $0.type == .continueCourse && ($0.status == .pending || $0.status == .shown)
+        }
+        guard !hasPending else { return }
+
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
+
+        for course in allCourses {
+            guard let nextLecture = course.nextLecture else { continue }
+
+            // Check cooldown: no dismissed continueCourse nudge for this lecture within 30 days
+            let recentlyDismissed = allNudges.contains { nudge in
+                nudge.type == .continueCourse &&
+                nudge.status == .dismissed &&
+                nudge.createdAt > thirtyDaysAgo &&
+                nudge.targetItem?.id == nextLecture.id
+            }
+            guard !recentlyDismissed else { continue }
+
+            let lectureIndex = (course.lectureOrder.firstIndex(of: nextLecture.id) ?? 0) + 1
+            var message = "Lecture \(lectureIndex) of \(course.title) is next."
+
+            // Find supplementary topic overlap
+            let lectureTags = nextLecture.tags
+            if !lectureTags.isEmpty {
+                let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+                let tagIDs = Set(lectureTags.map(\.id))
+                let relatedCount = allItems.filter { item in
+                    item.id != nextLecture.id &&
+                    item.type != .courseLecture &&
+                    item.tags.contains(where: { tagIDs.contains($0.id) })
+                }.count
+
+                if relatedCount > 0 {
+                    let topicNames = lectureTags.prefix(2).map(\.name).joined(separator: " & ")
+                    message += " It covers \(topicNames) — you have \(relatedCount) saved article\(relatedCount == 1 ? "" : "s") on that topic."
+                }
+            }
+
+            let nudge = Nudge(type: .continueCourse, message: message, targetItem: nextLecture)
+            modelContext.insert(nudge)
+            try? modelContext.save()
+            return // Only one course nudge at a time
+        }
     }
 
     // MARK: - Per-Board Frequency

@@ -12,6 +12,7 @@ struct NudgeSettings {
         case staleInboxEnabled = "nudge.staleInbox.enabled"
         case connectionPromptEnabled = "nudge.connectionPrompt.enabled"
         case streakEnabled = "nudge.streak.enabled"
+        case continueCourseEnabled = "nudge.continueCourse.enabled"
         case scheduleIntervalHours = "nudge.schedule.intervalHours"
         case maxNudgesPerDay = "nudge.maxPerDay"
     }
@@ -36,6 +37,11 @@ struct NudgeSettings {
     static var streakEnabled: Bool {
         get { defaults.object(forKey: Key.streakEnabled.rawValue) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.streakEnabled.rawValue) }
+    }
+
+    static var continueCourseEnabled: Bool {
+        get { defaults.object(forKey: Key.continueCourseEnabled.rawValue) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.continueCourseEnabled.rawValue) }
     }
 
     // MARK: - Schedule
@@ -66,6 +72,7 @@ struct NudgeSettings {
         case .staleInbox: return staleInboxEnabled
         case .connectionPrompt: return connectionPromptEnabled
         case .streak: return streakEnabled
+        case .continueCourse: return continueCourseEnabled
         }
     }
 

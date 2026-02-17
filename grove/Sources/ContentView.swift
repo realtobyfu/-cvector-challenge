@@ -6,11 +6,13 @@ enum SidebarItem: Hashable {
     case board(UUID)
     case tags
     case graph
+    case course(UUID)
 }
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Board.sortOrder) private var boards: [Board]
+    @Query(sort: \Course.createdAt) private var courses: [Course]
     @State private var selection: SidebarItem? = .inbox
     @State private var showInspector = true
     @State private var selectedItem: Item?
@@ -192,6 +194,16 @@ struct ContentView: View {
                 TagBrowserView(selectedItem: $selectedItem)
             case .graph:
                 GraphVisualizationView(selectedItem: $selectedItem)
+            case .course(let courseID):
+                if let course = courses.first(where: { $0.id == courseID }) {
+                    CourseDetailView(course: course, selectedItem: $selectedItem, openedItem: $openedItem)
+                } else {
+                    PlaceholderView(
+                        icon: "graduationcap",
+                        title: "Course",
+                        message: "Course not found."
+                    )
+                }
             case nil:
                 PlaceholderView(
                     icon: "leaf",

@@ -6,6 +6,7 @@ enum NudgeType: String, Codable {
     case connectionPrompt
     case staleInbox
     case streak
+    case continueCourse
 }
 
 enum NudgeStatus: String, Codable {

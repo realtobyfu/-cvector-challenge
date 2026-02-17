@@ -66,7 +66,7 @@ struct NudgeBarView: View {
         }
 
         switch nudge.type {
-        case .resurface:
+        case .resurface, .continueCourse:
             if let item = nudge.targetItem {
                 onOpenItem?(item)
             }
@@ -95,6 +95,7 @@ extension NudgeType {
         case .staleInbox: "tray.full"
         case .connectionPrompt: "link.circle"
         case .streak: "flame"
+        case .continueCourse: "graduationcap"
         }
     }
 
@@ -104,6 +105,7 @@ extension NudgeType {
         case .staleInbox: "Triage"
         case .connectionPrompt: "Connect"
         case .streak: "View"
+        case .continueCourse: "Continue"
         }
     }
 
@@ -113,6 +115,7 @@ extension NudgeType {
         case .staleInbox: .orange
         case .connectionPrompt: .purple
         case .streak: .red
+        case .continueCourse: .green
         }
     }
 }

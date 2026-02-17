@@ -13,7 +13,8 @@ struct GroveApp: App {
                 Tag.self,
                 Connection.self,
                 Annotation.self,
-                Nudge.self
+                Nudge.self,
+                Course.self
             )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
