@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var openedItem: Item?
     @State private var showNewNoteSheet = false
     @State private var showSearch = false
+    @State private var hasGeneratedNudges = false
 
     /// The board scope for search — set when searching within a board context
     private var searchScopeBoard: Board? {
@@ -31,8 +32,20 @@ struct ContentView: View {
         } detail: {
             ZStack {
                 HStack(spacing: 0) {
-                    detailContent
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 0) {
+                        NudgeBarView(
+                            onOpenItem: { item in
+                                selectedItem = item
+                                openedItem = item
+                            },
+                            onTriageInbox: {
+                                selection = .inbox
+                            }
+                        )
+
+                        detailContent
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
 
                     if showInspector {
                         Divider()
@@ -120,6 +133,12 @@ struct ContentView: View {
             .opacity(0)
             .frame(width: 0, height: 0)
         )
+        .onAppear {
+            guard !hasGeneratedNudges else { return }
+            hasGeneratedNudges = true
+            let engine = NudgeEngine(modelContext: modelContext)
+            engine.generateNudges()
+        }
     }
 
     @ViewBuilder

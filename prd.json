@@ -228,7 +228,7 @@
       "id": "S14",
       "title": "Basic Nudge System",
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "description": "Resurface and stale inbox nudges displayed in a non-blocking bar.",
       "acceptanceCriteria": [
         "NudgeEngine generates nudges on app launch",
