@@ -7,7 +7,7 @@
       "id": "S1",
       "title": "SwiftData Models",
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "description": "Define all SwiftData models with relationships and enums.",
       "acceptanceCriteria": [
         "Item model with id, title, type (article/video/note/courseLecture), status (inbox/active/archived/dismissed), sourceURL, content, thumbnail, engagementScore, metadata, createdAt, updatedAt",
@@ -27,7 +27,7 @@
       "id": "S2",
       "title": "App Shell with NavigationSplitView",
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "description": "Create the three-column layout shell with sidebar, content area, and collapsible inspector.",
       "acceptanceCriteria": [
         "GroveApp.swift uses WindowGroup with modelContainer for all 6 model types",
@@ -45,7 +45,7 @@
       "id": "S3",
       "title": "Board CRUD",
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "description": "Create, read, update, and delete boards from the sidebar.",
       "acceptanceCriteria": [
         "Add Board button in sidebar creates a new board with a sheet/popover for title, SF Symbol icon picker, and color picker",

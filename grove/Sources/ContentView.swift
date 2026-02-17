@@ -54,11 +54,7 @@ struct ContentView: View {
             )
         case .board(let boardID):
             if let board = boards.first(where: { $0.id == boardID }) {
-                PlaceholderView(
-                    icon: board.icon ?? "square.grid.2x2",
-                    title: board.title,
-                    message: "Items in this board will appear here."
-                )
+                BoardDetailView(board: board)
             } else {
                 PlaceholderView(
                     icon: "square.grid.2x2",

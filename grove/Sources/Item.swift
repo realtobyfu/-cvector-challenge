@@ -6,6 +6,15 @@ enum ItemType: String, Codable {
     case video
     case note
     case courseLecture
+
+    var iconName: String {
+        switch self {
+        case .article: "doc.richtext"
+        case .video: "play.rectangle"
+        case .note: "note.text"
+        case .courseLecture: "graduationcap"
+        }
+    }
 }
 
 enum ItemStatus: String, Codable {

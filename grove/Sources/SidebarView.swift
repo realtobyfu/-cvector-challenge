@@ -3,12 +3,21 @@ import SwiftData
 
 struct SidebarView: View {
     @Binding var selection: SidebarItem?
+    @Environment(\.modelContext) private var modelContext
     @Query private var allItems: [Item]
+    @Query(sort: \Board.sortOrder) private var boards: [Board]
+
+    @State private var showNewBoardSheet = false
+    @State private var boardToEdit: Board?
+    @State private var boardToDelete: Board?
 
     private var inboxCount: Int {
         allItems.filter { $0.status == .inbox }.count
     }
-    @Query(sort: \Board.sortOrder) private var boards: [Board]
+
+    private var viewModel: BoardViewModel {
+        BoardViewModel(modelContext: modelContext)
+    }
 
     var body: some View {
         List(selection: $selection) {
@@ -34,7 +43,7 @@ struct SidebarView: View {
                 .tag(SidebarItem.inbox)
             }
 
-            Section("Boards") {
+            Section {
                 ForEach(boards) { board in
                     Label {
                         HStack(spacing: 6) {
@@ -49,6 +58,31 @@ struct SidebarView: View {
                         Image(systemName: board.icon ?? "folder")
                     }
                     .tag(SidebarItem.board(board.id))
+                    .contextMenu {
+                        Button("Edit Board...") {
+                            boardToEdit = board
+                        }
+                        Divider()
+                        Button("Delete Board", role: .destructive) {
+                            boardToDelete = board
+                        }
+                    }
+                }
+                .onMove { source, destination in
+                    viewModel.moveBoard(from: source, to: destination, in: boards)
+                }
+            } header: {
+                HStack {
+                    Text("Boards")
+                    Spacer()
+                    Button {
+                        showNewBoardSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add Board")
                 }
             }
 
@@ -59,5 +93,39 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Grove")
+        .sheet(isPresented: $showNewBoardSheet) {
+            BoardEditorSheet { title, icon, color in
+                viewModel.createBoard(title: title, icon: icon, color: color)
+            }
+        }
+        .sheet(item: $boardToEdit) { board in
+            BoardEditorSheet(board: board) { title, icon, color in
+                viewModel.updateBoard(board, title: title, icon: icon, color: color)
+            }
+        }
+        .alert(
+            "Delete Board",
+            isPresented: Binding(
+                get: { boardToDelete != nil },
+                set: { if !$0 { boardToDelete = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                boardToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let board = boardToDelete {
+                    viewModel.deleteBoard(board)
+                    if case .board(let id) = selection, id == board.id {
+                        selection = nil
+                    }
+                }
+                boardToDelete = nil
+            }
+        } message: {
+            if let board = boardToDelete {
+                Text("Are you sure you want to delete \"\(board.title)\"? Items in this board will not be deleted.")
+            }
+        }
     }
 }
