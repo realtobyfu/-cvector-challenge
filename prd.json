@@ -96,7 +96,7 @@
       "id": "S6",
       "title": "Quick Capture — Menu Bar",
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "description": "Global quick capture via menu bar extra and keyboard shortcut.",
       "acceptanceCriteria": [
         "MenuBarExtra icon appears in the macOS menu bar",

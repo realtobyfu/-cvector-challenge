@@ -43,4 +43,40 @@ final class ItemViewModel {
         modelContext.delete(item)
         try? modelContext.save()
     }
+
+    /// Quick capture: detects URL vs plain text, creates appropriate Item
+    func captureItem(input: String) -> Item {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let url = URL(string: trimmed),
+           let scheme = url.scheme,
+           ["http", "https"].contains(scheme.lowercased()),
+           url.host != nil {
+            // URL input — detect article vs video
+            let itemType: ItemType = Self.isVideoURL(trimmed) ? .video : .article
+            let item = Item(title: trimmed, type: itemType)
+            item.status = .inbox
+            item.sourceURL = trimmed
+            modelContext.insert(item)
+            try? modelContext.save()
+            return item
+        } else {
+            // Plain text — create a note
+            let title = String(trimmed.prefix(80))
+            let item = Item(title: title, type: .note)
+            item.status = .inbox
+            item.content = trimmed
+            modelContext.insert(item)
+            try? modelContext.save()
+            return item
+        }
+    }
+
+    private static func isVideoURL(_ urlString: String) -> Bool {
+        let lower = urlString.lowercased()
+        return lower.contains("youtube.com/watch")
+            || lower.contains("youtu.be/")
+            || lower.contains("vimeo.com/")
+            || lower.contains("twitch.tv/")
+    }
 }
