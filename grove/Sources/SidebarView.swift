@@ -95,6 +95,8 @@ struct SidebarView: View {
             Section {
                 Label("Tags", systemImage: "tag")
                     .tag(SidebarItem.tags)
+                Label("Graph", systemImage: "point.3.connected.trianglepath.dotted")
+                    .tag(SidebarItem.graph)
             }
         }
         .listStyle(.sidebar)

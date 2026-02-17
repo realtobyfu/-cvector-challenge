@@ -5,6 +5,7 @@ enum SidebarItem: Hashable {
     case inbox
     case board(UUID)
     case tags
+    case graph
 }
 
 struct ContentView: View {
@@ -185,6 +186,8 @@ struct ContentView: View {
                 }
             case .tags:
                 TagBrowserView(selectedItem: $selectedItem)
+            case .graph:
+                GraphVisualizationView(selectedItem: $selectedItem)
             case nil:
                 PlaceholderView(
                     icon: "leaf",
