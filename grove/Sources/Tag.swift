@@ -1,12 +1,43 @@
 import Foundation
+import SwiftUI
 import SwiftData
 
-enum TagCategory: String, Codable {
+enum TagCategory: String, Codable, CaseIterable {
     case topic
     case concept
     case technology
     case person
     case custom
+
+    var displayName: String {
+        switch self {
+        case .topic: return "Topics"
+        case .concept: return "Concepts"
+        case .technology: return "Technology"
+        case .person: return "People"
+        case .custom: return "Custom"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .topic: return "text.book.closed"
+        case .concept: return "lightbulb"
+        case .technology: return "hammer"
+        case .person: return "person"
+        case .custom: return "tag"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .topic: return .blue
+        case .concept: return .purple
+        case .technology: return .orange
+        case .person: return .green
+        case .custom: return .gray
+        }
+    }
 }
 
 @Model

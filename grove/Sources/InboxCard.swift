@@ -51,12 +51,17 @@ struct InboxCard: View {
             if !item.tags.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(item.tags.prefix(5)) { tag in
-                        Text(tag.name)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(.quaternary)
-                            .clipShape(Capsule())
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(tag.category.color)
+                                .frame(width: 5, height: 5)
+                            Text(tag.name)
+                                .font(.caption2)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(tag.category.color.opacity(0.12))
+                        .clipShape(Capsule())
                     }
                     if item.tags.count > 5 {
                         Text("+\(item.tags.count - 5)")

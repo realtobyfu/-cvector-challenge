@@ -86,11 +86,7 @@ struct ContentView: View {
                 )
             }
         case .tags:
-            PlaceholderView(
-                icon: "tag",
-                title: "Tags",
-                message: "Browse and manage your tags here."
-            )
+            TagBrowserView(selectedItem: $selectedItem)
         case nil:
             PlaceholderView(
                 icon: "leaf",
@@ -129,6 +125,7 @@ struct InspectorPanelView: View {
     @Query(sort: \Board.sortOrder) private var allBoards: [Board]
     @State private var tagSearchText = ""
     @State private var isAddingTag = false
+    @State private var newTagCategory: TagCategory = .custom
 
     private var filteredTags: [Tag] {
         let existingIDs = Set(item.tags.map(\.id))
@@ -249,12 +246,21 @@ struct InspectorPanelView: View {
             // Add tag with autocomplete
             if isAddingTag {
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("Search or create tag...", text: $tagSearchText)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                        .onSubmit {
-                            createAndAddTag()
+                    HStack(spacing: 4) {
+                        TextField("Search or create tag...", text: $tagSearchText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .onSubmit {
+                                createAndAddTag()
+                            }
+                        Picker("", selection: $newTagCategory) {
+                            ForEach(TagCategory.allCases, id: \.self) { cat in
+                                Text(cat.displayName).tag(cat)
+                            }
                         }
+                        .font(.caption2)
+                        .frame(width: 90)
+                    }
 
                     if !filteredTags.isEmpty {
                         ScrollView {
@@ -264,10 +270,13 @@ struct InspectorPanelView: View {
                                         addTag(tag)
                                     } label: {
                                         HStack {
+                                            Circle()
+                                                .fill(tag.category.color)
+                                                .frame(width: 5, height: 5)
                                             Text(tag.name)
                                                 .font(.caption)
                                             Spacer()
-                                            Text(tag.category.rawValue)
+                                            Text(tag.category.displayName)
                                                 .font(.caption2)
                                                 .foregroundStyle(.tertiary)
                                         }
@@ -282,6 +291,13 @@ struct InspectorPanelView: View {
                         .frame(maxHeight: 150)
                         .background(.quaternary.opacity(0.5))
                         .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+
+                    // Hint: press Enter to create if no match
+                    if !tagSearchText.isEmpty && filteredTags.isEmpty {
+                        Text("Press Enter to create \"\(tagSearchText)\"")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 .padding(.horizontal)
@@ -399,11 +415,12 @@ struct InspectorPanelView: View {
             return
         }
 
-        let tag = Tag(name: name)
+        let tag = Tag(name: name, category: newTagCategory)
         modelContext.insert(tag)
         item.tags.append(tag)
         item.updatedAt = .now
         tagSearchText = ""
+        newTagCategory = .custom
         isAddingTag = false
     }
 }
@@ -416,6 +433,9 @@ struct TagChipView: View {
 
     var body: some View {
         HStack(spacing: 3) {
+            Circle()
+                .fill(tag.category.color)
+                .frame(width: 5, height: 5)
             Text(tag.name)
                 .font(.caption2)
             Button {
@@ -428,7 +448,7 @@ struct TagChipView: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .background(.quaternary)
+        .background(tag.category.color.opacity(0.12))
         .clipShape(Capsule())
     }
 }
