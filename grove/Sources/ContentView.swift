@@ -43,7 +43,8 @@ struct ContentView: View {
                             },
                             onTriageInbox: {
                                 selection = .inbox
-                            }
+                            },
+                            resurfacingService: nudgeEngine?.resurfacingService
                         )
 
                         detailContent
@@ -273,6 +274,8 @@ struct InspectorPanelView: View {
                 boardMembershipSection
                 Divider().padding(.horizontal)
                 connectionsSection
+                Divider().padding(.horizontal)
+                resurfacingSection
 
                 Spacer()
             }
@@ -624,6 +627,77 @@ struct InspectorPanelView: View {
     private func deleteConnection(_ connection: Connection) {
         let viewModel = ItemViewModel(modelContext: modelContext)
         viewModel.deleteConnection(connection)
+    }
+
+    // MARK: - Resurfacing Section
+
+    private var resurfacingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Resurfacing")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+
+            if item.isResurfacingEligible {
+                Toggle(isOn: Binding(
+                    get: { !item.isResurfacingPaused },
+                    set: { item.isResurfacingPaused = !$0 }
+                )) {
+                    Text("Active in resurfacing queue")
+                        .font(.caption)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .padding(.horizontal)
+
+                if !item.isResurfacingPaused {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("Interval: \(item.resurfaceIntervalDays) days")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let nextDate = item.nextResurfaceDate {
+                            HStack(spacing: 4) {
+                                Image(systemName: item.isResurfacingOverdue ? "exclamationmark.circle" : "calendar.badge.clock")
+                                    .font(.caption2)
+                                    .foregroundStyle(item.isResurfacingOverdue ? Color.orange : .secondary)
+                                Text(item.isResurfacingOverdue ? "Overdue" : "Next: \(nextDate.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption)
+                                    .foregroundStyle(item.isResurfacingOverdue ? Color.orange : .secondary)
+                            }
+                        }
+
+                        if item.resurfaceCount > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Text("Resurfaced \(item.resurfaceCount) time\(item.resurfaceCount == 1 ? "" : "s")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                } else {
+                    Text("Resurfacing paused for this item.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal)
+                }
+            } else {
+                Text("Add annotations or connections to enable resurfacing.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal)
+            }
+        }
     }
 
     // MARK: - Actions

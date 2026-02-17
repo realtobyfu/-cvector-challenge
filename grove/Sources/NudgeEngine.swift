@@ -8,9 +8,11 @@ import SwiftData
 final class NudgeEngine {
     private var modelContext: ModelContext
     private var timer: Timer?
+    private(set) var resurfacingService: ResurfacingService
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        self.resurfacingService = ResurfacingService(modelContext: modelContext)
     }
 
     // MARK: - Scheduling
@@ -31,6 +33,9 @@ final class NudgeEngine {
 
     /// Generate all nudge types, respecting settings toggles and daily limits.
     func generateNudges() {
+        // Reset stale resurfacing intervals (60+ days no engagement → back to 7 days)
+        resurfacingService.resetStaleIntervals()
+
         let todayNudgeCount = nudgesCreatedToday()
         let maxPerDay = NudgeSettings.maxNudgesPerDay
 
@@ -38,7 +43,7 @@ final class NudgeEngine {
         guard todayNudgeCount < maxPerDay || userHasHighEngagement() else { return }
 
         if NudgeSettings.resurfaceEnabled {
-            generateResurfaceNudge()
+            generateSpacedResurfaceNudge()
         }
         if NudgeSettings.staleInboxEnabled {
             generateStaleInboxNudge()
@@ -77,23 +82,64 @@ final class NudgeEngine {
         return todayCount < maxPerDay || userHasHighEngagement()
     }
 
-    // MARK: - Resurface Nudge
+    // MARK: - Spaced Resurface Nudge
 
-    /// Picks a random .active item not updated in 14+ days and creates a
-    /// resurface nudge, unless one was dismissed for that item within 30 days.
-    private func generateResurfaceNudge() {
+    /// Uses adaptive interval resurfacing: items with annotations/connections enter
+    /// a queue. Interval doubles after each engagement, resets after 60 days of inactivity.
+    private func generateSpacedResurfaceNudge() {
         guard canCreateNudge() else { return }
+        guard !NudgeSettings.spacedResurfacingGlobalPause else { return }
 
+        let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
+
+        // Don't create if there's already a pending/shown resurface nudge
+        let hasPending = allNudges.contains {
+            $0.type == .resurface && ($0.status == .pending || $0.status == .shown)
+        }
+        guard !hasPending else { return }
+
+        // Get IDs of items with recently dismissed resurface nudges (within 7 days)
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+        let recentlyDismissedIDs = Set(
+            allNudges
+                .filter { $0.type == .resurface && $0.status == .dismissed && $0.createdAt > sevenDaysAgo }
+                .compactMap { $0.targetItem?.id }
+        )
+
+        // Use ResurfacingService to find the best candidate
+        guard let chosen = resurfacingService.nextResurfaceCandidate(excludingItemIDs: recentlyDismissedIDs) else {
+            // Fall back to old behavior for items without annotations/connections
+            generateLegacyResurfaceNudge(excludingIDs: recentlyDismissedIDs, allNudges: allNudges)
+            return
+        }
+
+        // Check per-board nudge frequency
+        guard !isBoardNudgeDisabled(for: chosen) else { return }
+
+        // Build message with context
+        var message = "You saved \"\(chosen.title)\" — time to revisit?"
+        if let context = resurfacingService.resurfaceContext(for: chosen) {
+            message += " \(context)"
+        }
+
+        let nudge = Nudge(type: .resurface, message: message, targetItem: chosen)
+        resurfacingService.markResurfaced(chosen)
+        modelContext.insert(nudge)
+        try? modelContext.save()
+    }
+
+    /// Fallback for items without annotations/connections — uses the original
+    /// 14-day stale threshold to still surface forgotten items.
+    private func generateLegacyResurfaceNudge(excludingIDs: Set<UUID>, allNudges: [Nudge]) {
         let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .now
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
 
         let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
         let staleActiveItems = allItems.filter {
-            $0.status == .active && $0.updatedAt < fourteenDaysAgo
+            $0.status == .active && $0.updatedAt < fourteenDaysAgo &&
+            !$0.isResurfacingEligible // Only items not in the spaced queue
         }
         guard !staleActiveItems.isEmpty else { return }
-
-        let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
 
         let dismissedItemIDs = Set(
             allNudges
@@ -101,16 +147,9 @@ final class NudgeEngine {
                 .compactMap { $0.targetItem?.id }
         )
 
-        let pendingItemIDs = Set(
-            allNudges
-                .filter { $0.type == .resurface && ($0.status == .pending || $0.status == .shown) }
-                .compactMap { $0.targetItem?.id }
-        )
-
-        // Filter by per-board nudge frequency
         let candidates = staleActiveItems.filter { item in
-            guard !dismissedItemIDs.contains(item.id) && !pendingItemIDs.contains(item.id) else { return false }
-            return !isBoardNudgeDisabled(for: item)
+            !dismissedItemIDs.contains(item.id) && !excludingIDs.contains(item.id) &&
+            !isBoardNudgeDisabled(for: item)
         }
         guard let chosen = candidates.randomElement() else { return }
 

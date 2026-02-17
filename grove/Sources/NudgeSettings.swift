@@ -15,6 +15,8 @@ struct NudgeSettings {
         case continueCourseEnabled = "nudge.continueCourse.enabled"
         case scheduleIntervalHours = "nudge.schedule.intervalHours"
         case maxNudgesPerDay = "nudge.maxPerDay"
+        case spacedResurfacingEnabled = "nudge.spacedResurfacing.enabled"
+        case spacedResurfacingGlobalPause = "nudge.spacedResurfacing.globalPause"
     }
 
     // MARK: - Type Toggles
@@ -62,6 +64,20 @@ struct NudgeSettings {
             return val > 0 ? val : 2
         }
         set { defaults.set(newValue, forKey: Key.maxNudgesPerDay.rawValue) }
+    }
+
+    // MARK: - Spaced Resurfacing
+
+    /// Whether spaced resurfacing is enabled (default true).
+    static var spacedResurfacingEnabled: Bool {
+        get { defaults.object(forKey: Key.spacedResurfacingEnabled.rawValue) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.spacedResurfacingEnabled.rawValue) }
+    }
+
+    /// Global pause for all resurfacing (default false).
+    static var spacedResurfacingGlobalPause: Bool {
+        get { defaults.object(forKey: Key.spacedResurfacingGlobalPause.rawValue) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Key.spacedResurfacingGlobalPause.rawValue) }
     }
 
     // MARK: - Helpers

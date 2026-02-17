@@ -390,7 +390,7 @@
       "id": "S23",
       "title": "[v2] Spaced Resurfacing",
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "description": "Intelligent resurfacing of items based on engagement patterns, not just time.",
       "acceptanceCriteria": [
         "Items with annotations or connections enter a resurfacing queue",
