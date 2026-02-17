@@ -113,7 +113,7 @@
       "id": "S7",
       "title": "URL Metadata Fetching",
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "description": "When a URL is captured, fetch its title, description, and thumbnail via OpenGraph/meta tags.",
       "acceptanceCriteria": [
         "URLMetadataFetcher service fetches the HTML of a given URL",
