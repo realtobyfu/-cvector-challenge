@@ -3,11 +3,12 @@ import SwiftData
 
 // MARK: - Suggestion Model
 
-private enum SuggestionType: String {
+enum SuggestionType: String {
     case reflect = "REFLECT"
     case revisit = "REVISIT"
     case synthesize = "SYNTHESIZE"
     case continueCourse = "CONTINUE"
+    case nudge = "NUDGE"
 
     var systemImage: String {
         switch self {
@@ -15,17 +16,28 @@ private enum SuggestionType: String {
         case .revisit: "arrow.counterclockwise"
         case .synthesize: "sparkles"
         case .continueCourse: "play.circle"
+        case .nudge: "lightbulb"
         }
     }
 }
 
-private struct Suggestion: Identifiable {
+struct Suggestion: Identifiable {
     let id = UUID()
     let type: SuggestionType
     let title: String
     let reason: String
     let item: Item?
     let board: Board?
+    let nudge: Nudge?
+
+    init(type: SuggestionType, title: String, reason: String, item: Item? = nil, board: Board? = nil, nudge: Nudge? = nil) {
+        self.type = type
+        self.title = title
+        self.reason = reason
+        self.item = item
+        self.board = board
+        self.nudge = nudge
+    }
 }
 
 struct HomeView: View {
@@ -37,12 +49,14 @@ struct HomeView: View {
     @Query(sort: \Course.createdAt) private var courses: [Course]
     @Query(sort: \LearningPath.updatedAt, order: .reverse) private var learningPaths: [LearningPath]
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
+    @Query(sort: \Nudge.createdAt, order: .reverse) private var allNudges: [Nudge]
 
     @State private var isInboxCollapsed = false
     @State private var isSuggestionsCollapsed = false
     @State private var isPathsCollapsed = false
     @State private var isConversationsCollapsed = false
     @State private var openedLearningPath: LearningPath?
+    @State private var suggestions: [Suggestion] = []
 
     private var inboxCount: Int {
         allItems.filter { $0.status == .inbox }.count
@@ -54,8 +68,23 @@ struct HomeView: View {
 
     // MARK: - Suggestions
 
-    private var suggestions: [Suggestion] {
+    private var activeNudges: [Nudge] {
+        allNudges.filter { $0.status == .pending || $0.status == .shown }
+    }
+
+    private func computeSuggestions() -> [Suggestion] {
         var result: [Suggestion] = []
+
+        // 0. Active nudge as first card
+        if let nudge = activeNudges.first {
+            result.append(Suggestion(
+                type: .nudge,
+                title: nudge.displayMessage,
+                reason: nudge.type.actionLabel,
+                item: nudge.targetItem,
+                nudge: nudge
+            ))
+        }
 
         // 1. Reflect — Active items with content but 0 reflections, by depthScore desc
         let reflectCandidates = allItems
@@ -66,8 +95,7 @@ struct HomeView: View {
                 type: .reflect,
                 title: top.title,
                 reason: "Has content but no reflections yet",
-                item: top,
-                board: nil
+                item: top
             ))
         }
 
@@ -80,14 +108,13 @@ struct HomeView: View {
                 type: .revisit,
                 title: top.title,
                 reason: "Due for spaced review",
-                item: top,
-                board: nil
+                item: top
             ))
         }
 
         // 3. Synthesize — Boards with 4+ active reflected items but no synthesis note
         for board in boards {
-            guard result.count < 4 else { break }
+            guard result.count < 5 else { break }
             let activeItems = board.items.filter { $0.status == .active }
             let reflectedItems = activeItems.filter { !$0.reflections.isEmpty }
             let hasSynthesis = activeItems.contains { $0.metadata["isAIGenerated"] == "true" || $0.metadata["digest"] == "true" }
@@ -96,7 +123,6 @@ struct HomeView: View {
                     type: .synthesize,
                     title: board.title,
                     reason: "\(reflectedItems.count) reflected items ready to synthesize",
-                    item: nil,
                     board: board
                 ))
                 break // only one synthesize suggestion
@@ -105,20 +131,23 @@ struct HomeView: View {
 
         // 4. Continue Course — Next unfinished lecture
         for course in courses {
-            guard result.count < 4 else { break }
+            guard result.count < 5 else { break }
             if let next = course.nextLecture {
                 result.append(Suggestion(
                     type: .continueCourse,
                     title: next.title,
                     reason: "\(course.title) — \(course.completedCount)/\(course.totalCount) done",
-                    item: next,
-                    board: nil
+                    item: next
                 ))
                 break // only one course suggestion
             }
         }
 
-        return Array(result.prefix(4))
+        return Array(result.prefix(5))
+    }
+
+    private func refreshSuggestions() {
+        suggestions = computeSuggestions()
     }
 
     var body: some View {
@@ -173,6 +202,17 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgPrimary)
         .navigationTitle("")
+        .task {
+            if suggestions.isEmpty {
+                refreshSuggestions()
+            }
+        }
+        .onChange(of: allItems.count) {
+            refreshSuggestions()
+        }
+        .onChange(of: activeNudges.first?.id) {
+            refreshSuggestions()
+        }
     }
 
     // MARK: - Inbox Section
@@ -219,54 +259,116 @@ struct HomeView: View {
     }
 
     private func suggestionCard(_ suggestion: Suggestion) -> some View {
-        Button {
-            if let item = suggestion.item {
-                openedItem = item
-            }
-        } label: {
-            HStack(spacing: 0) {
-                // Left accent bar
-                Rectangle()
-                    .fill(Color.accentSelection)
-                    .frame(width: 2)
+        HStack(spacing: 0) {
+            // Left accent bar
+            Rectangle()
+                .fill(Color.accentSelection)
+                .frame(width: 2)
 
-                VStack(alignment: .leading, spacing: Spacing.xs) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                HStack {
                     // Type badge
-                    Text(suggestion.type.rawValue)
+                    Text(suggestion.type == .nudge ? (suggestion.nudge?.type.iconName ?? "NUDGE").uppercased() : suggestion.type.rawValue)
                         .font(.groveBadge)
                         .tracking(0.8)
                         .foregroundStyle(Color.textSecondary)
 
-                    // Title
-                    HStack(spacing: Spacing.sm) {
-                        Image(systemName: suggestion.type.systemImage)
-                            .font(.groveBodySecondary)
-                            .foregroundStyle(Color.textSecondary)
-                        Text(suggestion.title)
-                            .font(.groveBody)
-                            .foregroundStyle(Color.textPrimary)
-                            .lineLimit(1)
-                    }
+                    Spacer()
 
-                    // Reason
+                    // Dismiss X for nudge cards
+                    if let nudge = suggestion.nudge {
+                        Button {
+                            dismissNudge(nudge)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Title
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: suggestion.nudge?.type.iconName ?? suggestion.type.systemImage)
+                        .font(.groveBodySecondary)
+                        .foregroundStyle(Color.textSecondary)
+                    Text(suggestion.title)
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(2)
+                }
+
+                // Reason / Action
+                if let nudge = suggestion.nudge {
+                    Button {
+                        actOnNudge(nudge)
+                    } label: {
+                        Text(nudge.type.actionLabel)
+                            .font(.groveBadge)
+                            .foregroundStyle(Color.textPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.accentBadge)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
                     Text(suggestion.reason)
                         .font(.groveBodySecondary)
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(1)
                 }
-                .padding(.horizontal, Spacing.md)
-                .padding(.vertical, Spacing.sm)
             }
-            .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
-            .background(Color.bgCard)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.borderPrimary, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.sm)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
+        .background(Color.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.borderPrimary, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if suggestion.nudge == nil, let item = suggestion.item {
+                openedItem = item
+            }
+        }
+    }
+
+    // MARK: - Nudge Actions
+
+    private func actOnNudge(_ nudge: Nudge) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            nudge.status = .actedOn
+            NudgeSettings.recordAction(type: nudge.type, actedOn: true)
+            try? modelContext.save()
+        }
+
+        switch nudge.type {
+        case .resurface, .continueCourse, .reflectionPrompt, .contradiction,
+             .knowledgeGap, .synthesisPrompt:
+            if let item = nudge.targetItem {
+                openedItem = item
+            }
+        case .dialecticalCheckIn:
+            NotificationCenter.default.post(name: .groveStartCheckIn, object: nudge)
+        case .staleInbox, .connectionPrompt, .streak:
+            break
+        }
+
+        refreshSuggestions()
+    }
+
+    private func dismissNudge(_ nudge: Nudge) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            nudge.status = .dismissed
+            NudgeSettings.recordAction(type: nudge.type, actedOn: false)
+            try? modelContext.save()
+        }
+        refreshSuggestions()
     }
 
     // MARK: - Learning Paths Section

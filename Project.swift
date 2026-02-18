@@ -9,6 +9,8 @@ let project = Project(
             product: .app,
             bundleId: "dev.tuist.grove",
             infoPlist: .extendingDefault(with: [
+                "CFBundleDisplayName": "Grove",
+                "CFBundleName": "Grove",
                 "CFBundleIconName": "AppIcon",
                 "ATSApplicationFontsPath": "Fonts",
             ]),
@@ -16,11 +18,15 @@ let project = Project(
                 "grove/Sources",
                 "grove/Resources",
             ],
+            entitlements: .file(path: "grove/grove.entitlements"),
             dependencies: [],
             settings: .settings(base: [
                 "SWIFT_STRICT_CONCURRENCY": "complete",
                 "SWIFT_VERSION": "6.0",
                 "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+                "CODE_SIGN_STYLE": "Automatic",
+                "DEVELOPMENT_TEAM": "679K683SQ5",
+                "CODE_SIGN_IDENTITY": "Apple Development",
             ])
         ),
         .target(

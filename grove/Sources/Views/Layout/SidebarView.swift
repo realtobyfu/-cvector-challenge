@@ -86,20 +86,13 @@ struct SidebarView: View {
                     viewModel.moveBoard(from: source, to: destination, in: boards)
                 }
             } header: {
-                HStack {
-                    Text("Boards")
-                        .sectionHeaderStyle()
-                    Spacer()
-                    Button {
-                        showNewBoardSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.groveMeta)
+                Text("Boards")
+                    .sectionHeaderStyle()
+                    .contextMenu {
+                        Button("New Board...") {
+                            showNewBoardSheet = true
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.textMuted)
-                    .help("Add Board")
-                }
             }
 
             Section {
@@ -126,20 +119,13 @@ struct SidebarView: View {
                     }
                 }
             } header: {
-                HStack {
-                    Text("Courses")
-                        .sectionHeaderStyle()
-                    Spacer()
-                    Button {
-                        showNewCourseSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.groveMeta)
+                Text("Courses")
+                    .sectionHeaderStyle()
+                    .contextMenu {
+                        Button("New Course...") {
+                            showNewCourseSheet = true
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.textMuted)
-                    .help("Add Course")
-                }
             }
 
             if !recentConversations.isEmpty {
@@ -161,20 +147,8 @@ struct SidebarView: View {
                         .buttonStyle(.plain)
                     }
                 } header: {
-                    HStack {
-                        Text("Conversations")
-                            .sectionHeaderStyle()
-                        Spacer()
-                        Button {
-                            NotificationCenter.default.post(name: .groveToggleChat, object: nil)
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.groveMeta)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.textMuted)
-                        .help("New Chat")
-                    }
+                    Text("Conversations")
+                        .sectionHeaderStyle()
                 }
             }
 

@@ -1,7 +1,5 @@
 import SwiftUI
 import SwiftData
-import CloudKit
-import Combine
 
 /// Sync status states for the UI indicator.
 enum SyncStatus: Equatable, Sendable {
@@ -30,74 +28,24 @@ enum SyncStatus: Equatable, Sendable {
 }
 
 /// Manages CloudKit sync state and monitoring.
-/// SwiftData handles the actual sync — this service monitors account status
+/// SwiftData handles the actual sync — this service monitors sync events
 /// and provides UI state for the sync indicator.
 @MainActor
 @Observable
 final class SyncService {
     var status: SyncStatus = .disabled
 
-    private var accountCheckTimer: Timer?
     private var monitoringTasks: [Task<Void, Never>] = []
 
     init() {
         if SyncSettings.syncEnabled {
-            status = .syncing
-            Task {
-                await checkAccountStatus()
-            }
+            status = .synced
             startMonitoring()
         }
     }
 
-    /// Check iCloud account availability.
-    func checkAccountStatus() async {
-        guard SyncSettings.syncEnabled else {
-            status = .disabled
-            return
-        }
-
-        do {
-            let accountStatus = try await CKContainer.default().accountStatus()
-            switch accountStatus {
-            case .available:
-                self.status = .synced
-            case .noAccount:
-                self.status = .error("No iCloud account")
-            case .restricted:
-                self.status = .error("iCloud restricted")
-            case .couldNotDetermine:
-                self.status = .error("Unknown status")
-            case .temporarilyUnavailable:
-                self.status = .error("iCloud temporarily unavailable")
-            @unknown default:
-                self.status = .error("Unknown status")
-            }
-        } catch {
-            self.status = .error(error.localizedDescription)
-        }
-    }
-
-    /// Start monitoring for CloudKit account changes and sync events.
+    /// Start monitoring for SwiftData/CloudKit sync events.
     func startMonitoring() {
-        // Monitor iCloud account changes via async sequence
-        let accountTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(named: .CKAccountChanged) {
-                guard let self else { return }
-                await self.checkAccountStatus()
-            }
-        }
-        monitoringTasks.append(accountTask)
-
-        // Periodically check account status (every 60 seconds)
-        accountCheckTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                await self.checkAccountStatus()
-            }
-        }
-
-        // Listen for remote change notifications (SwiftData/CloudKit push)
         let remoteChangeTask = Task { [weak self] in
             for await notification in NotificationCenter.default.notifications(named: NSPersistentCloudKitContainer.eventChangedNotification) {
                 guard let self else { return }
@@ -123,21 +71,16 @@ final class SyncService {
 
     /// Stop monitoring.
     func stopMonitoring() {
-        accountCheckTimer?.invalidate()
-        accountCheckTimer = nil
         for task in monitoringTasks {
             task.cancel()
         }
         monitoringTasks.removeAll()
     }
 
-    /// Refresh sync state manually (e.g., when user toggles sync on).
+    /// Refresh sync state manually.
     func refresh() {
         if SyncSettings.syncEnabled {
-            status = .syncing
-            Task {
-                await checkAccountStatus()
-            }
+            status = .synced
             startMonitoring()
         } else {
             stopMonitoring()

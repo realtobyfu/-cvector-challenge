@@ -48,6 +48,9 @@ struct BoardDetailView: View {
     @State private var showClusterSynthesisSheet = false
     @State private var showLearningPathSheet = false
     @State private var itemToDelete: Item?
+    @State private var isSuggestionsCollapsed = false
+    @State private var boardSuggestions: [Suggestion] = []
+    @Query(sort: \Nudge.createdAt, order: .reverse) private var allNudges: [Nudge]
 
     /// The effective items for this board — smart boards compute from tag rules, regular boards use direct membership
     private var effectiveItems: [Item] {
@@ -95,6 +98,50 @@ struct BoardDetailView: View {
         TagService.improvedClusters(from: filteredItems, allBoardTags: allBoardTags)
     }
 
+    private var activeNudgesForBoard: [Nudge] {
+        let boardItemIDs = Set(effectiveItems.map(\.id))
+        return allNudges
+            .filter { ($0.status == .pending || $0.status == .shown) && $0.targetItem != nil && boardItemIDs.contains($0.targetItem!.id) }
+    }
+
+    private func computeBoardSuggestions() -> [Suggestion] {
+        var result: [Suggestion] = []
+        let items = effectiveItems
+
+        // Active nudge targeting items in this board
+        if let nudge = activeNudgesForBoard.first {
+            result.append(Suggestion(
+                type: .nudge,
+                title: nudge.displayMessage,
+                reason: nudge.type.actionLabel,
+                item: nudge.targetItem,
+                nudge: nudge
+            ))
+        }
+
+        // Reflect — items with content but no reflections
+        let reflectCandidates = items
+            .filter { $0.status == .active && $0.content != nil && !$0.content!.isEmpty && $0.reflections.isEmpty }
+            .sorted { $0.depthScore > $1.depthScore }
+        if let top = reflectCandidates.first {
+            result.append(Suggestion(type: .reflect, title: top.title, reason: "Has content but no reflections yet", item: top))
+        }
+
+        // Revisit — overdue items in this board
+        let revisitCandidates = items
+            .filter { $0.isResurfacingOverdue }
+            .sorted { $0.depthScore > $1.depthScore }
+        if let top = revisitCandidates.first {
+            result.append(Suggestion(type: .revisit, title: top.title, reason: "Due for spaced review", item: top))
+        }
+
+        return Array(result.prefix(3))
+    }
+
+    private func refreshBoardSuggestions() {
+        boardSuggestions = computeBoardSuggestions()
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Capture bar — auto-assigns to this board
@@ -105,6 +152,11 @@ struct BoardDetailView: View {
             if effectiveItems.isEmpty {
                 emptyState
             } else {
+                // Suggestions section
+                if !boardSuggestions.isEmpty {
+                    boardSuggestionsSection
+                }
+
                 // Tag filter bar
                 if !allBoardTags.isEmpty {
                     tagFilterBar
@@ -183,6 +235,14 @@ struct BoardDetailView: View {
             )
         }
         .background(boardKeyboardHandlers)
+        .task {
+            if boardSuggestions.isEmpty {
+                refreshBoardSuggestions()
+            }
+        }
+        .onChange(of: effectiveItems.count) {
+            refreshBoardSuggestions()
+        }
         .alert(
             "Delete Item",
             isPresented: Binding(
@@ -254,6 +314,129 @@ struct BoardDetailView: View {
     private func openSelectedItem() {
         guard let item = selectedItem else { return }
         openedItem = item
+    }
+
+    // MARK: - Board Suggestions Section
+
+    private var boardSuggestionsSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HomeSectionHeader(
+                title: "Suggestions",
+                count: boardSuggestions.count,
+                isCollapsed: $isSuggestionsCollapsed
+            )
+
+            if !isSuggestionsCollapsed {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 250, maximum: 400), spacing: Spacing.md)],
+                    spacing: Spacing.md
+                ) {
+                    ForEach(boardSuggestions) { suggestion in
+                        boardSuggestionCard(suggestion)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, Spacing.sm)
+    }
+
+    private func boardSuggestionCard(_ suggestion: Suggestion) -> some View {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.accentSelection)
+                .frame(width: 2)
+
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                HStack {
+                    Text(suggestion.type == .nudge ? (suggestion.nudge?.type.iconName ?? "NUDGE").uppercased() : suggestion.type.rawValue)
+                        .font(.groveBadge)
+                        .tracking(0.8)
+                        .foregroundStyle(Color.textSecondary)
+
+                    Spacer()
+
+                    if let nudge = suggestion.nudge {
+                        Button {
+                            dismissBoardNudge(nudge)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(Color.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: suggestion.nudge?.type.iconName ?? suggestion.type.systemImage)
+                        .font(.groveBodySecondary)
+                        .foregroundStyle(Color.textSecondary)
+                    Text(suggestion.title)
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(2)
+                }
+
+                if let nudge = suggestion.nudge {
+                    Button {
+                        actOnBoardNudge(nudge)
+                    } label: {
+                        Text(nudge.type.actionLabel)
+                            .font(.groveBadge)
+                            .foregroundStyle(Color.textPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.accentBadge)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(suggestion.reason)
+                        .font(.groveBodySecondary)
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.sm)
+        }
+        .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
+        .background(Color.bgCard)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.borderPrimary, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if suggestion.nudge == nil, let item = suggestion.item {
+                openedItem = item
+                selectedItem = item
+            }
+        }
+    }
+
+    private func actOnBoardNudge(_ nudge: Nudge) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            nudge.status = .actedOn
+            NudgeSettings.recordAction(type: nudge.type, actedOn: true)
+            try? modelContext.save()
+        }
+        if let item = nudge.targetItem {
+            openedItem = item
+            selectedItem = item
+        }
+        refreshBoardSuggestions()
+    }
+
+    private func dismissBoardNudge(_ nudge: Nudge) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            nudge.status = .dismissed
+            NudgeSettings.recordAction(type: nudge.type, actedOn: false)
+            try? modelContext.save()
+        }
+        refreshBoardSuggestions()
     }
 
     // MARK: - Tag Filter Bar

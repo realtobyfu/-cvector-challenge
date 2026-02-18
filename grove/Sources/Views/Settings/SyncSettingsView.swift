@@ -1,10 +1,8 @@
 import SwiftUI
-import CloudKit
 
 /// Settings view for CloudKit sync configuration.
 struct SyncSettingsView: View {
     @State private var syncEnabled = SyncSettings.syncEnabled
-    @State private var accountStatusText = "Checking..."
     @State private var showRestartAlert = false
 
     var body: some View {
@@ -20,32 +18,23 @@ struct SyncSettingsView: View {
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textSecondary)
 
-                if syncEnabled {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(Color.textPrimary)
-                            .font(.groveBodySmall)
-                        Text("Changing sync requires restarting Grove to take effect.")
-                            .font(.groveBodySmall)
-                            .foregroundStyle(Color.textPrimary)
-                            .fontWeight(.semibold)
-                    }
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(Color.textPrimary)
+                        .font(.groveBodySmall)
+                    Text("Changing sync requires restarting Grove to take effect.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textPrimary)
+                        .fontWeight(.semibold)
                 }
             }
 
-            Section("Account Status") {
+            Section("Status") {
                 HStack(spacing: 8) {
                     Image(systemName: syncEnabled ? "icloud" : "icloud.slash")
                         .foregroundStyle(syncEnabled ? Color.textPrimary : Color.textSecondary)
-                    Text(accountStatusText)
+                    Text(syncEnabled ? "Sync enabled — data syncs automatically" : "Local-only mode")
                         .font(.groveBodySecondary)
-                }
-
-                if syncEnabled {
-                    Button("Check Account Status") {
-                        checkAccount()
-                    }
-                    .controlSize(.small)
                 }
             }
 
@@ -61,9 +50,6 @@ struct SyncSettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .onAppear {
-            checkAccount()
-        }
         .alert("Restart Required", isPresented: $showRestartAlert) {
             Button("OK") { }
         } message: {
@@ -80,36 +66,6 @@ struct SyncSettingsView: View {
             Text(text)
                 .font(.groveBodySmall)
                 .foregroundStyle(Color.textSecondary)
-        }
-    }
-
-    private func checkAccount() {
-        guard syncEnabled else {
-            accountStatusText = "Sync is disabled (local-only mode)"
-            return
-        }
-
-        accountStatusText = "Checking..."
-        Task {
-            do {
-                let status = try await CKContainer.default().accountStatus()
-                switch status {
-                case .available:
-                    accountStatusText = "iCloud account available"
-                case .noAccount:
-                    accountStatusText = "No iCloud account signed in"
-                case .restricted:
-                    accountStatusText = "iCloud access restricted"
-                case .couldNotDetermine:
-                    accountStatusText = "Could not determine account status"
-                case .temporarilyUnavailable:
-                    accountStatusText = "iCloud temporarily unavailable"
-                @unknown default:
-                    accountStatusText = "Unknown status"
-                }
-            } catch {
-                accountStatusText = "Error: \(error.localizedDescription)"
-            }
         }
     }
 }

@@ -166,10 +166,10 @@ struct DialecticalChatPanel: View {
     private func assistantBubble(_ message: ChatMessage, conversation: Conversation) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                wikiLinkText(message.content)
-                    .font(.groveBody)
-                    .foregroundStyle(Color.textPrimary)
-                    .textSelection(.enabled)
+                MarkdownTextView(markdown: message.content) { title in
+                    navigateToItemByTitle(title)
+                }
+                .textSelection(.enabled)
 
                 // Action buttons
                 assistantActions(message: message, conversation: conversation)
@@ -228,63 +228,13 @@ struct DialecticalChatPanel: View {
         .padding(.top, 2)
     }
 
-    // MARK: - Wiki-Link Text
+    // MARK: - Wiki-Link Navigation
 
-    private func wikiLinkText(_ content: String) -> some View {
-        let parts = parseWikiLinks(content)
-        return VStack(alignment: .leading, spacing: Spacing.xs) {
-            // Render as plain text with wiki-link markers
-            // Full markdown rendering could be added later
-            Text(attributedContent(parts))
+    private func navigateToItemByTitle(_ title: String) {
+        let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+        if let item = allItems.first(where: { $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame }) {
+            onNavigateToItem?(item)
         }
-    }
-
-    private struct TextPart {
-        let text: String
-        let isWikiLink: Bool
-    }
-
-    private func parseWikiLinks(_ content: String) -> [TextPart] {
-        var parts: [TextPart] = []
-        var remaining = content
-
-        while let openRange = remaining.range(of: "[[") {
-            let before = String(remaining[remaining.startIndex..<openRange.lowerBound])
-            if !before.isEmpty {
-                parts.append(TextPart(text: before, isWikiLink: false))
-            }
-
-            remaining = String(remaining[openRange.upperBound...])
-
-            if let closeRange = remaining.range(of: "]]") {
-                let linkText = String(remaining[remaining.startIndex..<closeRange.lowerBound])
-                parts.append(TextPart(text: linkText, isWikiLink: true))
-                remaining = String(remaining[closeRange.upperBound...])
-            } else {
-                parts.append(TextPart(text: "[[" + remaining, isWikiLink: false))
-                remaining = ""
-            }
-        }
-
-        if !remaining.isEmpty {
-            parts.append(TextPart(text: remaining, isWikiLink: false))
-        }
-
-        return parts
-    }
-
-    private func attributedContent(_ parts: [TextPart]) -> AttributedString {
-        var result = AttributedString()
-        for part in parts {
-            var attr = AttributedString(part.text)
-            if part.isWikiLink {
-                attr.foregroundColor = .textPrimary
-                attr.font = .groveBodyMedium
-                attr.backgroundColor = Color.accentBadge
-            }
-            result.append(attr)
-        }
-        return result
     }
 
     // MARK: - Thinking Indicator

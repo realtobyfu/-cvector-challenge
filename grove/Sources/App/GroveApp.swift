@@ -41,7 +41,18 @@ struct GroveApp: App {
                 modelContainer = try ModelContainer(for: schema, configurations: [config])
             }
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            // CloudKit may fail if not configured — fall back to local-only
+            do {
+                let fallbackConfig = ModelConfiguration(
+                    "Grove",
+                    schema: schema,
+                    cloudKitDatabase: .none
+                )
+                modelContainer = try ModelContainer(for: schema, configurations: [fallbackConfig])
+                SyncSettings.syncEnabled = false
+            } catch {
+                fatalError("Failed to create ModelContainer: \(error)")
+            }
         }
     }
 

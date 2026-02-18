@@ -96,38 +96,34 @@ struct ContentView: View {
 
     private var mainContentArea: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                NudgeBarView(
-                    onOpenItem: { item in
-                        selectedItem = item
-                        openedItem = item
-                    },
-                    onTriageInbox: {
-                        selection = .home
-                    },
-                    resurfacingService: nudgeEngine?.resurfacingService
-                )
-
-                detailContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            detailContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             rightPanel
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button {
-                    withAnimation {
-                        if columnVisibility == .detailOnly {
-                            columnVisibility = .automatic
-                        } else {
-                            columnVisibility = .detailOnly
-                        }
+                if openedItem != nil {
+                    Button {
+                        openedItem = nil
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
                     }
-                } label: {
-                    Image(systemName: "sidebar.leading")
+                    .help("Back to list")
+                } else {
+                    Button {
+                        withAnimation {
+                            if columnVisibility == .detailOnly {
+                                columnVisibility = .automatic
+                            } else {
+                                columnVisibility = .detailOnly
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "sidebar.leading")
+                    }
+                    .help("Toggle Sidebar")
                 }
-                .help("Toggle Sidebar")
             }
             ToolbarItem(placement: .status) {
                 SyncStatusView(syncService: syncService)
@@ -278,16 +274,6 @@ struct ContentView: View {
     private var detailContent: some View {
         if let openedItem {
             ItemReaderView(item: openedItem)
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            self.openedItem = nil
-                        } label: {
-                            Label("Back", systemImage: "chevron.left")
-                        }
-                        .help("Back to list")
-                    }
-                }
         } else {
             switch selection {
             case .home:

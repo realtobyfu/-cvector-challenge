@@ -116,7 +116,7 @@
       ],
       "priority": 7,
       "passes": false,
-      "notes": ""
+      "notes": "Not yet started. The current 'Save as Reflection' button (US-008) saves to an existing item, not a new Item. This requires a separate button and Item creation path."
     },
     {
       "id": "US-008",
@@ -130,8 +130,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented via SaveReflectionSheet in DialecticalChatPanel. Assistant messages with referenced items show 'Save as Reflection' button that opens a sheet to pick item, block type (all ReflectionBlockType cases), and edit content. Reflection is saved via DialecticsService.saveAsReflection."
     },
     {
       "id": "US-009",
@@ -145,8 +145,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented via connectionSheet in DialecticalChatPanel. Messages with 2+ referenced item IDs show 'Create Connection' button. Sheet shows source/target items with ConnectionType picker (all cases). DialecticsService.createConnection creates the Connection entity."
     },
     {
       "id": "US-010",
@@ -161,8 +161,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented via conversationListPopover in DialecticalChatPanel header (list icon). Shows all non-archived conversations with title, trigger, date, and message count. Tapping selects conversation which continues in the chat view. Conversations also appear in the HomeView 'Recent Conversations' section and in SidebarView. Note: search filtering within history list is not implemented — the popover shows all conversations with no search bar. Consider partial pass."
     },
     {
       "id": "US-011",
@@ -194,7 +194,7 @@
       ],
       "priority": 12,
       "passes": false,
-      "notes": ""
+      "notes": "Partially done. DialecticsService.systemPrompt says 'blends Socratic questioning with Hegelian dialectics' but does not include Nietzschean perspectivism or explicit mode-switching logic. UI still has 'Socratic questioning and dialectical reasoning' in the empty state of DialecticalChatPanel. Needs: (1) add Nietzschean mode to system prompt, (2) explicit context-based mode selection instructions, (3) fix UI string in DialecticalChatPanel empty state."
     },
     {
       "id": "US-013",
@@ -255,7 +255,7 @@
       ],
       "priority": 16,
       "passes": false,
-      "notes": ""
+      "notes": "Not done. ReflectionPromptService is still called in ItemReaderView at line 1130."
     },
     {
       "id": "US-017",
@@ -270,7 +270,24 @@
       ],
       "priority": 17,
       "passes": false,
-      "notes": ""
+      "notes": "Not done. ConnectionSuggestionService is still called in ItemReaderView at multiple call sites (lines 1160, 1177, 1188, 1199)."
+    },
+    {
+      "id": "US-018",
+      "title": "Apple Intelligence on-device LLM provider",
+      "description": "As a user on macOS 26+, I want Grove's AI features to work using Apple's on-device Foundation Models so I get free, private AI with no API key required, while users on older macOS fall back to Groq.",
+      "acceptanceCriteria": [
+        "AppleIntelligenceProvider implements LLMProvider protocol using FoundationModels framework",
+        "Provider is gated with @available(macOS 26, *) and gracefully returns nil on older OS versions",
+        "LLMServiceConfig selects Apple Intelligence over Groq when the on-device model is available",
+        "Both single-turn (complete) and multi-turn chat (completeChat) paths are implemented",
+        "Token usage is estimated (chars/4 heuristic) and recorded via TokenTracker",
+        "All existing AI features (AutoTag, Synthesis, Dialectics, etc.) work through the new provider without code changes",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": "Implemented in grove/Sources/Services/LLM/AppleIntelligenceProvider.swift. Uses SystemLanguageModel.default with LanguageModelSession. Availability gated on SystemLanguageModel.default.availability == .available. Multi-turn chat replays messages sequentially via session.respond(to:). Compiles conditionally with #if canImport(FoundationModels)."
     }
   ]
 }
