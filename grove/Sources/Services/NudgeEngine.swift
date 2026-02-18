@@ -12,18 +12,22 @@ final class NudgeEngine {
     private(set) var resurfacingService: ResurfacingService
     private let smartNudgeService: SmartNudgeServiceProtocol
     private let weeklyDigestService: WeeklyDigestServiceProtocol
+    private let checkInTriggerService: CheckInTriggerServiceProtocol
     private var hasGeneratedSmartNudgeThisLaunch = false
     private var hasCheckedDigestThisLaunch = false
+    private var hasCheckedCheckInThisLaunch = false
 
     init(
         modelContext: ModelContext,
         smartNudgeService: SmartNudgeServiceProtocol? = nil,
-        weeklyDigestService: WeeklyDigestServiceProtocol? = nil
+        weeklyDigestService: WeeklyDigestServiceProtocol? = nil,
+        checkInTriggerService: CheckInTriggerServiceProtocol? = nil
     ) {
         self.modelContext = modelContext
         self.resurfacingService = ResurfacingService(modelContext: modelContext)
         self.smartNudgeService = smartNudgeService ?? SmartNudgeService()
         self.weeklyDigestService = weeklyDigestService ?? WeeklyDigestService()
+        self.checkInTriggerService = checkInTriggerService ?? CheckInTriggerService()
     }
 
     // MARK: - Scheduling
@@ -33,6 +37,7 @@ final class NudgeEngine {
         generateNudges()
         generateSmartNudgeOnLaunch()
         generateWeeklyDigestOnLaunch()
+        generateCheckInOnLaunch()
         let intervalSeconds = TimeInterval(NudgeSettings.scheduleIntervalHours) * 3600
         timer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -472,6 +477,49 @@ final class NudgeEngine {
         Task { @MainActor [weak self] in
             guard let self else { return }
             _ = await self.weeklyDigestService.generateDigest(context: self.modelContext)
+        }
+    }
+
+    // MARK: - Dialectical Check-In
+
+    /// Generate a dialectical check-in nudge on app launch if conditions are met.
+    /// Uses CheckInTriggerService to evaluate contradictions, knowledge gaps,
+    /// stale items, and periodic reflection triggers.
+    private func generateCheckInOnLaunch() {
+        guard !hasCheckedCheckInThisLaunch else { return }
+        guard LLMServiceConfig.isConfigured else { return }
+        hasCheckedCheckInThisLaunch = true
+
+        // Don't create if there's already a pending/shown dialectical check-in
+        let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
+        let hasPending = allNudges.contains {
+            $0.type == .dialecticalCheckIn && ($0.status == .pending || $0.status == .shown)
+        }
+        guard !hasPending else { return }
+
+        // Check 7-day cooldown for dismissed check-ins
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+        let recentlyDismissed = allNudges.contains {
+            $0.type == .dialecticalCheckIn && $0.status == .dismissed && $0.createdAt > sevenDaysAgo
+        }
+        guard !recentlyDismissed else { return }
+
+        guard let suggestion = checkInTriggerService.evaluate(context: modelContext) else { return }
+
+        let nudge = Nudge(type: .dialecticalCheckIn, message: suggestion.message)
+        // Store the trigger type and opening prompt in relatedItemIDs and the nudge message
+        nudge.relatedItemIDs = suggestion.seedItems.map(\.id)
+        // Store opening prompt and trigger as metadata in the message
+        // Format: "message|||trigger|||openingPrompt"
+        nudge.message = "\(suggestion.message)|||"
+            + "\(suggestion.trigger.rawValue)|||"
+            + "\(suggestion.openingPrompt)"
+        modelContext.insert(nudge)
+        try? modelContext.save()
+
+        // Record periodic reflection timestamp if that was the trigger
+        if suggestion.trigger == .periodicReflection {
+            CheckInTriggerService.recordPeriodicReflection()
         }
     }
 

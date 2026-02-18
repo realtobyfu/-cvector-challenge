@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct InboxTriageView: View {
     @Binding var selectedItem: Item?
     var openedItem: Binding<Item?>?
+    var isEmbedded: Bool = false
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.createdAt, order: .reverse) private var allItems: [Item]
     @Query(sort: \Board.sortOrder) private var boards: [Board]
@@ -19,9 +20,17 @@ struct InboxTriageView: View {
     var body: some View {
         Group {
             if inboxItems.isEmpty {
-                emptyState
+                if isEmbedded {
+                    embeddedEmptyState
+                } else {
+                    emptyState
+                }
             } else {
-                inboxList
+                if isEmbedded {
+                    embeddedInboxList
+                } else {
+                    inboxList
+                }
             }
         }
         .sheet(isPresented: $showBoardPicker) {
@@ -87,7 +96,62 @@ struct InboxTriageView: View {
         }
     }
 
+    // MARK: - Embedded Inbox List
+
+    private var embeddedInboxList: some View {
+        let visibleItems = Array(inboxItems.prefix(8))
+        return LazyVStack(spacing: 8) {
+            ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
+                InboxCard(
+                    item: item,
+                    isSelected: index == focusedIndex,
+                    onKeep: { keepItem(item) },
+                    onLater: { /* no-op — stays in inbox */ },
+                    onDrop: { dropItem(item) },
+                    onConfirmTag: { tag in confirmTag(tag) },
+                    onDismissTag: { tag in dismissTag(tag, from: item) }
+                )
+                .id(item.id)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                    removal: .opacity.combined(with: .move(edge: .trailing))
+                ))
+                .onTapGesture {
+                    focusedIndex = index
+                    selectedItem = item
+                }
+            }
+
+            if inboxItems.count > 8 {
+                Button {
+                    NotificationCenter.default.post(name: .groveGoToHome, object: nil)
+                } label: {
+                    Text("Show all \(inboxItems.count) items")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, Spacing.xs)
+            }
+        }
+        .padding()
+        .animation(.easeInOut(duration: 0.25), value: inboxItems.map(\.id))
+    }
+
     // MARK: - Empty State
+
+    private var embeddedEmptyState: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "checkmark.circle")
+                .font(.groveBody)
+                .foregroundStyle(Color.textTertiary)
+            Text("All caught up — inbox is clear.")
+                .font(.groveBody)
+                .foregroundStyle(Color.textTertiary)
+        }
+        .padding(.vertical, Spacing.lg)
+        .frame(maxWidth: .infinity)
+    }
 
     private var emptyState: some View {
         VStack(spacing: 16) {

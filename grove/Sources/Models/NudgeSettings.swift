@@ -89,7 +89,8 @@ struct NudgeSettings: Sendable {
         case .connectionPrompt: return connectionPromptEnabled
         case .streak: return streakEnabled
         case .continueCourse: return continueCourseEnabled
-        case .reflectionPrompt, .contradiction, .knowledgeGap, .synthesisPrompt:
+        case .reflectionPrompt, .contradiction, .knowledgeGap, .synthesisPrompt,
+             .dialecticalCheckIn:
             return LLMServiceConfig.isConfigured
         }
     }

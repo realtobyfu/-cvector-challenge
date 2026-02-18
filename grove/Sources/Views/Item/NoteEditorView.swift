@@ -29,7 +29,7 @@ struct NoteEditorView: View {
                 .padding(.horizontal)
 
             // Markdown content area with wiki-link support
-            WikiLinkTextEditor(
+            RichMarkdownEditor(
                 text: Binding(
                     get: { item.content ?? "" },
                     set: { item.content = $0.isEmpty ? nil : $0 }

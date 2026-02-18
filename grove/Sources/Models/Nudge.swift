@@ -13,6 +13,9 @@ enum NudgeType: String, Codable {
     case contradiction
     case knowledgeGap
     case synthesisPrompt
+
+    // Dialectical check-in
+    case dialecticalCheckIn
 }
 
 enum NudgeStatus: String, Codable {

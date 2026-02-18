@@ -217,8 +217,8 @@ struct SearchOverlayView: View {
                     .font(.groveMeta)
                     .foregroundStyle(Color.textSecondary)
             }
-        case .annotation:
-            Image(systemName: "note.text")
+        case .reflection:
+            Image(systemName: "text.alignleft")
                 .font(.groveMeta)
                 .foregroundStyle(Color.textSecondary)
         case .tag:
@@ -278,8 +278,8 @@ struct SearchOverlayView: View {
             if let item = result.item {
                 onSelectItem?(item)
             }
-        case .annotation:
-            // Navigate to the annotation's parent item
+        case .reflection:
+            // Navigate to the reflection's parent item
             if let item = result.item {
                 onSelectItem?(item)
             }

@@ -2,9 +2,8 @@ import SwiftUI
 import SwiftData
 
 enum SidebarItem: Hashable {
-    case inbox
+    case home
     case board(UUID)
-    case tags
     case graph
     case course(UUID)
 }
@@ -13,15 +12,25 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Board.sortOrder) private var boards: [Board]
     @Query(sort: \Course.createdAt) private var courses: [Course]
-    @State private var selection: SidebarItem? = .inbox
-    @State private var showInspector = true
+    @State private var selection: SidebarItem? = .home
+    @State private var inspectorUserOverride: Bool?
     @State private var selectedItem: Item?
     @State private var openedItem: Item?
     @State private var showNewNoteSheet = false
     @State private var showSearch = false
+    @State private var showCaptureOverlay = false
     @State private var nudgeEngine: NudgeEngine?
     @State private var showBoardExportSheet = false
     @State private var showItemExportSheet = false
+    @State private var showChatPanel = false
+    @State private var selectedConversation: Conversation?
+
+    private var isInspectorVisible: Bool {
+        if let override = inspectorUserOverride {
+            return override
+        }
+        return selectedItem != nil
+    }
 
     var syncService: SyncService
 
@@ -45,161 +54,170 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(selection: $selection)
         } detail: {
-            ZStack {
-                HStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        NudgeBarView(
-                            onOpenItem: { item in
-                                selectedItem = item
-                                openedItem = item
-                            },
-                            onTriageInbox: {
-                                selection = .inbox
-                            },
-                            resurfacingService: nudgeEngine?.resurfacingService
-                        )
-
-                        CaptureBarView(currentBoardID: currentBoardID)
-
-                        detailContent
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-
-                    if showInspector {
-                        Divider()
-                        if let selectedItem {
-                            InspectorPanelView(item: selectedItem)
-                                .frame(width: 280)
-                                .transition(.move(edge: .trailing))
-                        } else {
-                            InspectorEmptyView()
-                                .frame(width: 280)
-                                .transition(.move(edge: .trailing))
-                        }
-                    }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .status) {
-                        SyncStatusView(syncService: syncService)
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            withAnimation {
-                                showInspector.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "sidebar.trailing")
-                        }
-                        .help(showInspector ? "Hide Inspector (⌘])" : "Show Inspector (⌘])")
-                    }
-                }
-
-                // Search overlay
-                if showSearch {
-                    Color.black.opacity(0.2)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                showSearch = false
-                            }
-                        }
-
-                    VStack {
-                        SearchOverlayView(
-                            isPresented: $showSearch,
-                            scopeBoard: searchScopeBoard,
-                            onSelectItem: { item in
-                                selectedItem = item
-                                openedItem = item
-                            },
-                            onSelectBoard: { board in
-                                selection = .board(board.id)
-                            },
-                            onSelectTag: { _ in
-                                selection = .tags
-                            }
-                        )
-                        .padding(.top, 80)
-                        Spacer()
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
+            detailZStack
         }
         .frame(minWidth: 1200, minHeight: 800)
-        .onChange(of: selection) {
-            selectedItem = nil
-            openedItem = nil
+        .modifier(ContentViewEventHandlers(
+            selection: $selection,
+            selectedItem: $selectedItem,
+            openedItem: $openedItem,
+            showNewNoteSheet: $showNewNoteSheet,
+            showSearch: $showSearch,
+            showCaptureOverlay: $showCaptureOverlay,
+            showBoardExportSheet: $showBoardExportSheet,
+            showItemExportSheet: $showItemExportSheet,
+            showChatPanel: $showChatPanel,
+            selectedConversation: $selectedConversation,
+            inspectorUserOverride: $inspectorUserOverride,
+            nudgeEngine: $nudgeEngine,
+            isInspectorVisible: isInspectorVisible,
+            searchScopeBoard: searchScopeBoard,
+            boards: boards,
+            modelContext: modelContext
+        ))
+    }
+
+    private var detailZStack: some View {
+        ZStack {
+            mainContentArea
+            searchOverlay
+            captureOverlay
         }
-        .sheet(isPresented: $showNewNoteSheet) {
-            NewNoteSheet { title, content in
-                let viewModel = ItemViewModel(modelContext: modelContext)
-                let note = viewModel.createNote(title: title)
-                note.content = content
-                // If a board is selected, assign to it
-                if case .board(let boardID) = selection,
-                   let board = boards.first(where: { $0.id == boardID }) {
-                    viewModel.assignToBoard(note, board: board)
-                }
-                selectedItem = note
+    }
+
+    private var mainContentArea: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                NudgeBarView(
+                    onOpenItem: { item in
+                        selectedItem = item
+                        openedItem = item
+                    },
+                    onTriageInbox: {
+                        selection = .home
+                    },
+                    resurfacingService: nudgeEngine?.resurfacingService
+                )
+
+                detailContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            rightPanel
+        }
+        .toolbar {
+            ToolbarItem(placement: .status) {
+                SyncStatusView(syncService: syncService)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                chatToolbarButton
+            }
+            ToolbarItem(placement: .primaryAction) {
+                inspectorToolbarButton
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .groveNewNote)) { _ in
-            showNewNoteSheet = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .groveToggleSearch)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) {
-                showSearch.toggle()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .groveToggleInspector)) { _ in
+    }
+
+    private var chatToolbarButton: some View {
+        Button {
             withAnimation {
-                showInspector.toggle()
+                showChatPanel.toggle()
             }
+        } label: {
+            Image(systemName: showChatPanel ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .groveGoToInbox)) { _ in
-            selection = .inbox
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .groveGoToBoard)) { notification in
-            if let index = notification.object as? Int, index >= 1, index <= boards.count {
-                selection = .board(boards[index - 1].id)
+        .help(showChatPanel ? "Hide Chat" : "Show Chat")
+    }
+
+    private var inspectorToolbarButton: some View {
+        Button {
+            withAnimation {
+                inspectorUserOverride = !isInspectorVisible
             }
+        } label: {
+            Image(systemName: "sidebar.trailing")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .groveGoToTags)) { _ in
-            selection = .tags
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .groveExportBoard)) { _ in
-            if searchScopeBoard != nil {
-                showBoardExportSheet = true
+        .help(isInspectorVisible ? "Hide Inspector" : "Show Inspector")
+    }
+
+    @ViewBuilder
+    private var searchOverlay: some View {
+        if showSearch {
+            Color.black.opacity(0.2)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showSearch = false
+                    }
+                }
+
+            VStack {
+                SearchOverlayView(
+                    isPresented: $showSearch,
+                    scopeBoard: searchScopeBoard,
+                    onSelectItem: { item in
+                        selectedItem = item
+                        openedItem = item
+                    },
+                    onSelectBoard: { board in
+                        selection = .board(board.id)
+                    },
+                    onSelectTag: { _ in }
+                )
+                .padding(.top, 80)
+                Spacer()
             }
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
-        .onReceive(NotificationCenter.default.publisher(for: .groveExportItem)) { _ in
-            if selectedItem != nil {
-                showItemExportSheet = true
+    }
+
+    @ViewBuilder
+    private var captureOverlay: some View {
+        if showCaptureOverlay {
+            Color.black.opacity(0.2)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showCaptureOverlay = false
+                    }
+                }
+
+            VStack {
+                CaptureBarOverlayView(
+                    isPresented: $showCaptureOverlay,
+                    currentBoardID: currentBoardID
+                )
+                .padding(.top, 80)
+                Spacer()
             }
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
-        .sheet(isPresented: $showBoardExportSheet) {
-            if let board = searchScopeBoard {
-                let items = board.isSmart
-                    ? BoardViewModel.smartBoardItems(for: board, from: boards.flatMap(\.items))
-                    : board.items
-                BoardExportSheet(board: board, items: items)
+    }
+
+    @ViewBuilder
+    private var rightPanel: some View {
+        if showChatPanel {
+            Divider()
+            DialecticalChatPanel(
+                selectedConversation: $selectedConversation,
+                isVisible: $showChatPanel,
+                onNavigateToItem: { item in
+                    selectedItem = item
+                    openedItem = item
+                }
+            )
+            .transition(.move(edge: .trailing))
+        } else if isInspectorVisible {
+            Divider()
+            if let selectedItem {
+                InspectorPanelView(item: selectedItem)
+                    .frame(width: 280)
+                    .transition(.move(edge: .trailing))
+            } else {
+                InspectorEmptyView()
+                    .frame(width: 280)
+                    .transition(.move(edge: .trailing))
             }
-        }
-        .sheet(isPresented: $showItemExportSheet) {
-            if let item = selectedItem {
-                ItemExportSheet(items: [item])
-            }
-        }
-        .onAppear {
-            guard nudgeEngine == nil else { return }
-            let engine = NudgeEngine(modelContext: modelContext)
-            engine.startSchedule()
-            nudgeEngine = engine
-        }
-        .onDisappear {
-            nudgeEngine?.stopSchedule()
-            nudgeEngine = nil
         }
     }
 
@@ -219,8 +237,8 @@ struct ContentView: View {
                 }
         } else {
             switch selection {
-            case .inbox:
-                InboxTriageView(selectedItem: $selectedItem, openedItem: $openedItem)
+            case .home:
+                HomeView(selectedItem: $selectedItem, openedItem: $openedItem)
             case .board(let boardID):
                 if let board = boards.first(where: { $0.id == boardID }) {
                     BoardDetailView(board: board, selectedItem: $selectedItem, openedItem: $openedItem)
@@ -231,8 +249,6 @@ struct ContentView: View {
                         message: "Board not found."
                     )
                 }
-            case .tags:
-                TagBrowserView(selectedItem: $selectedItem)
             case .graph:
                 GraphVisualizationView(selectedItem: $selectedItem)
             case .course(let courseID):
@@ -279,37 +295,17 @@ struct PlaceholderView: View {
 struct InspectorPanelView: View {
     @Bindable var item: Item
     @Environment(\.modelContext) private var modelContext
-    @Query private var allTags: [Tag]
     @Query(sort: \Board.sortOrder) private var allBoards: [Board]
     @Query private var allItems: [Item]
-    @State private var tagSearchText = ""
-    @State private var isAddingTag = false
-    @State private var newTagCategory: TagCategory = .custom
     @State private var isAddingConnection = false
     @State private var connectionSearchText = ""
     @State private var selectedConnectionType: ConnectionType = .related
 
-    private var filteredTags: [Tag] {
-        let existingIDs = Set(item.tags.map(\.id))
-        let available = allTags.filter { !existingIDs.contains($0.id) }
-        if tagSearchText.isEmpty { return available }
-        return available.filter {
-            $0.name.localizedCaseInsensitiveContains(tagSearchText)
-        }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.lg) {
-                Text("Inspector")
-                    .font(.groveItemTitle)
-                    .foregroundStyle(Color.textPrimary)
-                    .padding(.horizontal)
-                    .padding(.top)
-
                 metadataSection
-                Divider().padding(.horizontal)
-                tagSection
+                    .padding(.top)
                 Divider().padding(.horizontal)
                 boardMembershipSection
                 Divider().padding(.horizontal)
@@ -373,100 +369,6 @@ struct InspectorPanelView: View {
                     .foregroundStyle(Color.textSecondary)
             }
             .padding(.horizontal)
-        }
-    }
-
-    // MARK: - Tag Section
-
-    private var tagSection: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            HStack {
-                Text("Tags")
-                    .sectionHeaderStyle()
-                Spacer()
-                Button {
-                    isAddingTag.toggle()
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.groveMeta)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.textMuted)
-            }
-            .padding(.horizontal)
-
-            // Current tags
-            if !item.tags.isEmpty {
-                FlowLayout(spacing: 4) {
-                    ForEach(item.tags) { tag in
-                        TagChipView(tag: tag) {
-                            removeTag(tag)
-                        }
-                    }
-                }
-                .padding(.horizontal)
-            }
-
-            // Add tag with autocomplete
-            if isAddingTag {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
-                        TextField("Search or create tag...", text: $tagSearchText)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.groveBodySmall)
-                            .onSubmit {
-                                createAndAddTag()
-                            }
-                        Picker("", selection: $newTagCategory) {
-                            ForEach(TagCategory.allCases, id: \.self) { cat in
-                                Text(cat.displayName).tag(cat)
-                            }
-                        }
-                        .font(.groveBadge)
-                        .frame(width: 90)
-                    }
-
-                    if !filteredTags.isEmpty {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(filteredTags.prefix(8)) { tag in
-                                    Button {
-                                        addTag(tag)
-                                    } label: {
-                                        HStack {
-                                            Text(tag.name)
-                                                .font(.groveTag)
-                                            Spacer()
-                                            Text(tag.category.displayName)
-                                                .font(.groveBadge)
-                                                .foregroundStyle(Color.textTertiary)
-                                        }
-                                        .padding(.vertical, 4)
-                                        .padding(.horizontal, 6)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 150)
-                        .background(Color.bgCard)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.borderPrimary, lineWidth: 1)
-                        )
-                    }
-
-                    // Hint: press Enter to create if no match
-                    if !tagSearchText.isEmpty && filteredTags.isEmpty {
-                        Text("Press Enter to create \"\(tagSearchText)\"")
-                            .font(.groveBadge)
-                            .foregroundStyle(Color.textTertiary)
-                    }
-                }
-                .padding(.horizontal)
-            }
         }
     }
 
@@ -744,40 +646,6 @@ struct InspectorPanelView: View {
         }
     }
 
-    // MARK: - Actions
-
-    private func addTag(_ tag: Tag) {
-        if !item.tags.contains(where: { $0.id == tag.id }) {
-            item.tags.append(tag)
-            item.updatedAt = .now
-        }
-        tagSearchText = ""
-        isAddingTag = false
-    }
-
-    private func removeTag(_ tag: Tag) {
-        item.tags.removeAll { $0.id == tag.id }
-        item.updatedAt = .now
-    }
-
-    private func createAndAddTag() {
-        let name = tagSearchText.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-
-        // Check for existing tag (case-insensitive)
-        if let existing = allTags.first(where: { $0.name.lowercased() == name.lowercased() }) {
-            addTag(existing)
-            return
-        }
-
-        let tag = Tag(name: name, category: newTagCategory)
-        modelContext.insert(tag)
-        item.tags.append(tag)
-        item.updatedAt = .now
-        tagSearchText = ""
-        newTagCategory = .custom
-        isAddingTag = false
-    }
 }
 
 // MARK: - Tag Chip View
@@ -858,21 +726,206 @@ struct FlowLayout: Layout {
 struct InspectorEmptyView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            Text("Inspector")
-                .font(.groveItemTitle)
-                .foregroundStyle(Color.textPrimary)
-                .padding(.horizontal)
-                .padding(.top)
-
             Text("Select an item to see details.")
                 .font(.groveBody)
                 .foregroundStyle(Color.textSecondary)
                 .padding(.horizontal)
+                .padding(.top)
 
             Spacer()
         }
         .frame(maxHeight: .infinity)
         .background(Color.bgInspector)
+    }
+}
+
+// MARK: - Content View Event Handlers
+
+struct ContentViewEventHandlers: ViewModifier {
+    @Binding var selection: SidebarItem?
+    @Binding var selectedItem: Item?
+    @Binding var openedItem: Item?
+    @Binding var showNewNoteSheet: Bool
+    @Binding var showSearch: Bool
+    @Binding var showCaptureOverlay: Bool
+    @Binding var showBoardExportSheet: Bool
+    @Binding var showItemExportSheet: Bool
+    @Binding var showChatPanel: Bool
+    @Binding var selectedConversation: Conversation?
+    @Binding var inspectorUserOverride: Bool?
+    @Binding var nudgeEngine: NudgeEngine?
+    let isInspectorVisible: Bool
+    let searchScopeBoard: Board?
+    let boards: [Board]
+    let modelContext: ModelContext
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: selection) {
+                selectedItem = nil
+                openedItem = nil
+                inspectorUserOverride = nil
+            }
+            .onChange(of: selectedItem) {
+                inspectorUserOverride = nil
+            }
+            .sheet(isPresented: $showNewNoteSheet) {
+                NewNoteSheet { title, noteContent in
+                    let viewModel = ItemViewModel(modelContext: modelContext)
+                    let note = viewModel.createNote(title: title)
+                    note.content = noteContent
+                    if case .board(let boardID) = selection,
+                       let board = boards.first(where: { $0.id == boardID }) {
+                        viewModel.assignToBoard(note, board: board)
+                    }
+                    selectedItem = note
+                }
+            }
+            .modifier(ContentViewNotificationHandlers(
+                showNewNoteSheet: $showNewNoteSheet,
+                showSearch: $showSearch,
+                showCaptureOverlay: $showCaptureOverlay,
+                showBoardExportSheet: $showBoardExportSheet,
+                showItemExportSheet: $showItemExportSheet,
+                showChatPanel: $showChatPanel,
+                selectedConversation: $selectedConversation,
+                inspectorUserOverride: $inspectorUserOverride,
+                selection: $selection,
+                selectedItem: $selectedItem,
+                nudgeEngine: $nudgeEngine,
+                isInspectorVisible: isInspectorVisible,
+                searchScopeBoard: searchScopeBoard,
+                boards: boards,
+                modelContext: modelContext
+            ))
+    }
+}
+
+struct ContentViewNotificationHandlers: ViewModifier {
+    @Binding var showNewNoteSheet: Bool
+    @Binding var showSearch: Bool
+    @Binding var showCaptureOverlay: Bool
+    @Binding var showBoardExportSheet: Bool
+    @Binding var showItemExportSheet: Bool
+    @Binding var showChatPanel: Bool
+    @Binding var selectedConversation: Conversation?
+    @Binding var inspectorUserOverride: Bool?
+    @Binding var selection: SidebarItem?
+    @Binding var selectedItem: Item?
+    @Binding var nudgeEngine: NudgeEngine?
+    let isInspectorVisible: Bool
+    let searchScopeBoard: Board?
+    let boards: [Board]
+    let modelContext: ModelContext
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .groveNewNote)) { _ in
+                showNewNoteSheet = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveToggleSearch)) { _ in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if !showSearch { showCaptureOverlay = false }
+                    showSearch.toggle()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveToggleInspector)) { _ in
+                withAnimation { inspectorUserOverride = !isInspectorVisible }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveCaptureBar)) { _ in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if !showCaptureOverlay { showSearch = false }
+                    showCaptureOverlay.toggle()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveGoToHome)) { _ in
+                selection = .home
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveGoToBoard)) { notification in
+                if let index = notification.object as? Int, index >= 1, index <= boards.count {
+                    selection = .board(boards[index - 1].id)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveExportBoard)) { _ in
+                if searchScopeBoard != nil { showBoardExportSheet = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveExportItem)) { _ in
+                if selectedItem != nil { showItemExportSheet = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveToggleChat)) { _ in
+                withAnimation { showChatPanel.toggle() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveOpenConversation)) { notification in
+                if let conversation = notification.object as? Conversation {
+                    selectedConversation = conversation
+                    withAnimation { showChatPanel = true }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveStartCheckIn)) { notification in
+                guard let nudge = notification.object as? Nudge else { return }
+                startCheckInConversation(from: nudge)
+            }
+            .sheet(isPresented: $showBoardExportSheet) {
+                if let board = searchScopeBoard {
+                    let items = board.isSmart
+                        ? BoardViewModel.smartBoardItems(for: board, from: boards.flatMap(\.items))
+                        : board.items
+                    BoardExportSheet(board: board, items: items)
+                }
+            }
+            .sheet(isPresented: $showItemExportSheet) {
+                if let item = selectedItem {
+                    ItemExportSheet(items: [item])
+                }
+            }
+            .onAppear {
+                guard nudgeEngine == nil else { return }
+                let engine = NudgeEngine(modelContext: modelContext)
+                engine.startSchedule()
+                nudgeEngine = engine
+            }
+            .onDisappear {
+                nudgeEngine?.stopSchedule()
+                nudgeEngine = nil
+            }
+    }
+
+    private func startCheckInConversation(from nudge: Nudge) {
+        let trigger = nudge.checkInTrigger ?? .userInitiated
+        let openingPrompt = nudge.checkInOpeningPrompt ?? ""
+        let seedIDs = nudge.relatedItemIDs ?? []
+
+        // Resolve seed items
+        let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+        let seedItems = seedIDs.compactMap { id in
+            allItems.first(where: { $0.id == id })
+        }
+
+        // Create conversation via DialecticsService
+        let service = DialecticsService()
+        let conversation = service.startConversation(
+            trigger: trigger,
+            seedItems: seedItems,
+            board: nil,
+            context: modelContext
+        )
+
+        // Add the opening prompt as an assistant message
+        if !openingPrompt.isEmpty {
+            let assistantMsg = ChatMessage(
+                role: .assistant,
+                content: openingPrompt,
+                position: conversation.nextPosition
+            )
+            assistantMsg.conversation = conversation
+            conversation.messages.append(assistantMsg)
+            modelContext.insert(assistantMsg)
+            conversation.updatedAt = .now
+            try? modelContext.save()
+        }
+
+        selectedConversation = conversation
+        withAnimation { showChatPanel = true }
     }
 }
 

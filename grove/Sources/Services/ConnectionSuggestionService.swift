@@ -299,10 +299,6 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
         let titleWords = tokenize(item.title)
 
         var contentText = item.content ?? ""
-        // Include annotation content for richer signal
-        for annotation in item.annotations {
-            contentText += " " + annotation.content
-        }
         // Include reflection content for richer signal
         for reflection in item.reflections {
             contentText += " " + reflection.content

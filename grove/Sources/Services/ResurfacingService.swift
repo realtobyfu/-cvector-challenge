@@ -71,12 +71,12 @@ final class ResurfacingService {
             .first
     }
 
-    /// Get context for a resurface nudge: a key annotation or connection title.
+    /// Get context for a resurface nudge: a key reflection or connection title.
     func resurfaceContext(for item: Item) -> String? {
-        // Prefer the most recent annotation as context
-        if let latestAnnotation = item.annotations.sorted(by: { $0.createdAt > $1.createdAt }).first {
-            let preview = String(latestAnnotation.content.prefix(80))
-            let suffix = latestAnnotation.content.count > 80 ? "..." : ""
+        // Prefer the most recent reflection as context
+        if let latestReflection = item.reflections.sorted(by: { $0.createdAt > $1.createdAt }).first {
+            let preview = String(latestReflection.content.prefix(80))
+            let suffix = latestReflection.content.count > 80 ? "..." : ""
             return "Your note: \"\(preview)\(suffix)\""
         }
 

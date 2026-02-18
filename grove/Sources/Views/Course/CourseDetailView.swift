@@ -192,7 +192,7 @@ struct CourseDetailView: View {
 
                 Spacer()
 
-                // Connection/annotation badges
+                // Connection/reflection badges
                 let connectionCount = lecture.outgoingConnections.count + lecture.incomingConnections.count
                 if connectionCount > 0 {
                     Label("\(connectionCount)", systemImage: "link")
@@ -200,9 +200,9 @@ struct CourseDetailView: View {
                         .foregroundStyle(Color.textSecondary)
                 }
 
-                let annotationCount = lecture.annotations.count
-                if annotationCount > 0 {
-                    Label("\(annotationCount)", systemImage: "note.text")
+                let reflectionCount = lecture.reflections.count
+                if reflectionCount > 0 {
+                    Label("\(reflectionCount)", systemImage: "text.alignleft")
                         .font(.groveMeta)
                         .foregroundStyle(Color.textSecondary)
                 }

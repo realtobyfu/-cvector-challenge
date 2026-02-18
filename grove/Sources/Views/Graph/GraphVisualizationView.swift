@@ -185,12 +185,12 @@ class GraphScene: SKScene {
     private let springLength: CGFloat = 120
     private let springStrength: CGFloat = 0.003
     private let repulsionStrength: CGFloat = 8000
-    private let dampingFactor: CGFloat = 0.85
-    private let centerGravity: CGFloat = 0.0005
+    private let dampingFactor: CGFloat = 0.7
+    private let centerGravity: CGFloat = 0.003
     private var velocities: [UUID: CGVector] = [:]
     private var isSimulating = true
     private var simulationSteps = 0
-    private let maxSimulationSteps = 300
+    private let maxSimulationSteps = 100
 
     // Connections data for drawing edges
     private var connectionData: [(sourceID: UUID, targetID: UUID, type: ConnectionType)] = []
@@ -262,6 +262,7 @@ class GraphScene: SKScene {
         simulationSteps += 1
         if simulationSteps > maxSimulationSteps {
             isSimulating = false
+            velocities.removeAll()
             return
         }
 
@@ -423,8 +424,6 @@ class GraphScene: SKScene {
         if let dragged = draggedNode {
             dragged.position = location
             velocities[dragged.item?.id ?? UUID()] = .zero
-            isSimulating = true
-            simulationSteps = max(simulationSteps - 5, 0)
         } else if isPanning {
             let dx = location.x - lastPanLocation.x
             let dy = location.y - lastPanLocation.y
@@ -435,11 +434,18 @@ class GraphScene: SKScene {
     }
 
     override func mouseUp(with event: NSEvent) {
+        let wasDragging = draggedNode != nil
         if let dragged = draggedNode {
             dragged.setHighlighted(false)
         }
         draggedNode = nil
         isPanning = false
+
+        // Short settle after drag so neighbors adjust, then freeze
+        if wasDragging {
+            simulationSteps = maxSimulationSteps - 30
+            isSimulating = true
+        }
     }
 
     override func scrollWheel(with event: NSEvent) {

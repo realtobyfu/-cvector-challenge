@@ -83,6 +83,65 @@ final class GroqProvider: LLMProvider, @unchecked Sendable {
         return nil
     }
 
+    // MARK: - Multi-Turn Chat
+
+    func completeChat(messages: [ChatTurn], service: String) async -> LLMCompletionResult? {
+        let budgetExceeded = await MainActor.run { TokenTracker.shared.isBudgetExceeded }
+        if budgetExceeded { return nil }
+
+        let config = (
+            apiKey: LLMServiceConfig.apiKey,
+            model: LLMServiceConfig.model,
+            baseURL: LLMServiceConfig.baseURL
+        )
+
+        guard !config.apiKey.isEmpty else { return nil }
+        guard let url = URL(string: config.baseURL) else { return nil }
+
+        let apiMessages = messages.map { turn -> [String: String] in
+            ["role": turn.role, "content": turn.content]
+        }
+
+        let body: [String: Any] = [
+            "model": config.model,
+            "messages": apiMessages,
+            "temperature": 0.5,
+            "max_tokens": 4000,
+        ]
+
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = httpBody
+        request.timeoutInterval = 60
+
+        for attempt in 0..<maxRetries {
+            if attempt > 0 {
+                let delay = UInt64(pow(2.0, Double(attempt))) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: delay)
+            }
+
+            guard !Task.isCancelled else { return nil }
+
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else { continue }
+                if httpResponse.statusCode >= 500 || httpResponse.statusCode == 429 { continue }
+                guard httpResponse.statusCode == 200 else { return nil }
+                return parseResponse(data, serviceName: service)
+            } catch {
+                continue
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: - Response Parsing
+
     private func parseResponse(_ data: Data, serviceName: String?) -> LLMCompletionResult? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],

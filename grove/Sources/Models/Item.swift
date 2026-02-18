@@ -198,9 +198,9 @@ final class Item {
     }
 
     /// Whether this item is eligible for the resurfacing queue.
-    /// Requires at least one annotation or connection.
+    /// Requires at least one reflection or connection.
     var isResurfacingEligible: Bool {
-        !annotations.isEmpty || !outgoingConnections.isEmpty || !incomingConnections.isEmpty
+        !reflections.isEmpty || !outgoingConnections.isEmpty || !incomingConnections.isEmpty
     }
 
     /// Next resurfacing date based on lastResurfacedAt + interval, or lastEngagedAt + interval.

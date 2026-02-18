@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Non-blocking popover showing connection suggestions after item/annotation save.
+/// Non-blocking popover showing connection suggestions after item save.
 /// Shows top 3 suggestions with accept/dismiss actions.
 struct ConnectionSuggestionPopover: View {
     let sourceItem: Item

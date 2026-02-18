@@ -18,6 +18,8 @@ struct GroveApp: App {
             LearningPathStep.self,
             Nudge.self,
             Course.self,
+            Conversation.self,
+            ChatMessage.self,
         ])
 
         do {
@@ -46,6 +48,10 @@ struct GroveApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(syncService: syncService)
+                .task {
+                    let context = modelContainer.mainContext
+                    AnnotationMigrationService.migrateIfNeeded(context: context)
+                }
         }
         .modelContainer(modelContainer)
         .defaultSize(width: 1200, height: 800)
@@ -86,6 +92,10 @@ struct GroveApp: App {
                     .tabItem {
                         Label("Sync", systemImage: "icloud")
                     }
+                ShortcutsSettingsView()
+                    .tabItem {
+                        Label("Shortcuts", systemImage: "keyboard")
+                    }
             }
             .frame(width: 500, height: 500)
         }
@@ -97,10 +107,15 @@ struct GroveApp: App {
 struct GroveMenuCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .newItem) {
+            Button("Capture") {
+                NotificationCenter.default.post(name: .groveCaptureBar, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
             Button("New Note") {
                 NotificationCenter.default.post(name: .groveNewNote, object: nil)
             }
-            .keyboardShortcut("n", modifiers: .command)
+            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Divider()
 
@@ -127,8 +142,8 @@ struct GroveMenuCommands: Commands {
 
             Divider()
 
-            Button("Go to Inbox") {
-                NotificationCenter.default.post(name: .groveGoToInbox, object: nil)
+            Button("Go to Home") {
+                NotificationCenter.default.post(name: .groveGoToHome, object: nil)
             }
             .keyboardShortcut("0", modifiers: .command)
 
@@ -140,11 +155,6 @@ struct GroveMenuCommands: Commands {
                 .keyboardShortcut(KeyEquivalent(Character("\(index)")), modifiers: .command)
             }
 
-            Divider()
-
-            Button("Go to Tags") {
-                NotificationCenter.default.post(name: .groveGoToTags, object: nil)
-            }
         }
 
         CommandMenu("View") {
@@ -152,6 +162,11 @@ struct GroveMenuCommands: Commands {
                 NotificationCenter.default.post(name: .groveToggleInspector, object: nil)
             }
             .keyboardShortcut("]", modifiers: .command)
+
+            Button("Toggle Dialectical Chat") {
+                NotificationCenter.default.post(name: .groveToggleChat, object: nil)
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
         }
     }
 }

@@ -7,6 +7,7 @@ struct SidebarView: View {
     @Query private var allItems: [Item]
     @Query(sort: \Board.sortOrder) private var boards: [Board]
     @Query(sort: \Course.createdAt) private var courses: [Course]
+    @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
 
     @State private var showNewBoardSheet = false
     @State private var showNewCourseSheet = false
@@ -19,6 +20,10 @@ struct SidebarView: View {
         allItems.filter { $0.status == .inbox }.count
     }
 
+    private var recentConversations: [Conversation] {
+        Array(conversations.filter { !$0.isArchived }.prefix(3))
+    }
+
     private var viewModel: BoardViewModel {
         BoardViewModel(modelContext: modelContext)
     }
@@ -28,7 +33,7 @@ struct SidebarView: View {
             Section {
                 Label {
                     HStack {
-                        Text("Inbox")
+                        Text("Home")
                         Spacer()
                         if inboxCount > 0 {
                             Text("\(inboxCount)")
@@ -41,9 +46,9 @@ struct SidebarView: View {
                         }
                     }
                 } icon: {
-                    Image(systemName: "tray")
+                    Image(systemName: "house")
                 }
-                .tag(SidebarItem.inbox)
+                .tag(SidebarItem.home)
             }
 
             Section {
@@ -141,9 +146,47 @@ struct SidebarView: View {
                 }
             }
 
+            if !recentConversations.isEmpty {
+                Section {
+                    ForEach(recentConversations) { conv in
+                        Button {
+                            NotificationCenter.default.post(name: .groveOpenConversation, object: conv)
+                        } label: {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(conv.title)
+                                        .font(.groveBody)
+                                        .foregroundStyle(Color.textPrimary)
+                                        .lineLimit(1)
+                                    Text(conv.updatedAt.formatted(date: .abbreviated, time: .omitted))
+                                        .font(.groveMeta)
+                                        .foregroundStyle(Color.textTertiary)
+                                }
+                            } icon: {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    HStack {
+                        Text("Conversations")
+                            .sectionHeaderStyle()
+                        Spacer()
+                        Button {
+                            NotificationCenter.default.post(name: .groveToggleChat, object: nil)
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.groveMeta)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.textMuted)
+                        .help("New Chat")
+                    }
+                }
+            }
+
             Section {
-                Label("Tags", systemImage: "tag")
-                    .tag(SidebarItem.tags)
                 Label("Graph", systemImage: "point.3.connected.trianglepath.dotted")
                     .tag(SidebarItem.graph)
             }

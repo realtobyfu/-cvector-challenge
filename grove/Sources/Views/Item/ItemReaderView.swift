@@ -5,11 +5,6 @@ import AVKit
 struct ItemReaderView: View {
     @Bindable var item: Item
     @Environment(\.modelContext) private var modelContext
-    // Annotation state (legacy)
-    @State private var isAddingAnnotation = false
-    @State private var newAnnotationText = ""
-    @State private var editingAnnotationID: UUID?
-    @State private var editAnnotationText = ""
     @State private var isEditingContent = false
     // Connection suggestions
     @State private var connectionSuggestions: [ConnectionSuggestion] = []
@@ -20,13 +15,10 @@ struct ItemReaderView: View {
     @State private var videoDuration: Double = 0
     @State private var videoSeekTarget: Double? = nil
     // Reflection state
-    @State private var isAddingBlock = false
-    @State private var newBlockType: ReflectionBlockType = .keyInsight
     @State private var editingBlockID: UUID?
     @State private var editBlockContent = ""
     // Text selection for Reflect button
     @State private var selectedHighlightText: String?
-    @State private var showReflectButton = false
     // Drag reordering state
     @State private var draggingBlock: ReflectionBlock?
     // Delete confirmation
@@ -41,17 +33,25 @@ struct ItemReaderView: View {
         item.reflections.sorted { $0.position < $1.position }
     }
 
+    private var isVideoItem: Bool {
+        item.type == .video && localVideoURL != nil
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            HSplitView {
-                // MARK: - Left Pane: Source Content (55%)
-                leftPane
-                    .frame(minWidth: 300, idealWidth: 550)
-
-                // MARK: - Right Pane: Reflection Blocks (45%)
-                rightPane
-                    .frame(minWidth: 250, idealWidth: 450)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    itemHeader
+                    Divider().padding(.horizontal)
+                    sourceContent
+                        .padding()
+                    Divider().padding(.horizontal)
+                    reflectionsSection
+                        .padding()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color.bgPrimary)
 
             // Connection suggestion popover
             if showSuggestions && !connectionSuggestions.isEmpty {
@@ -83,7 +83,6 @@ struct ItemReaderView: View {
         .onChange(of: item.id) {
             showSuggestions = false
             connectionSuggestions = []
-            isAddingBlock = false
             editingBlockID = nil
             selectedHighlightText = nil
             aiPrompts = []
@@ -94,125 +93,6 @@ struct ItemReaderView: View {
         .sheet(isPresented: $showItemExportSheet) {
             ItemExportSheet(items: [item])
         }
-    }
-
-    // MARK: - Left Pane
-
-    private var leftPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                itemHeader
-                Divider().padding(.horizontal)
-                sourceContent
-                    .padding()
-                Divider().padding(.horizontal)
-                annotationsSection
-                    .padding()
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.bgPrimary)
-    }
-
-    // MARK: - Right Pane
-
-    private var rightPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                // Section header
-                HStack {
-                    Text("REFLECTIONS")
-                        .sectionHeaderStyle()
-
-                    Text("\(item.reflections.count)")
-                        .font(.groveBadge)
-                        .foregroundStyle(Color.textMuted)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentBadge)
-                        .clipShape(Capsule())
-
-                    Spacer()
-
-                    Button {
-                        isAddingBlock = true
-                        newBlockType = .keyInsight
-                    } label: {
-                        Label("Add Block", systemImage: "plus.circle")
-                            .font(.groveBodySecondary)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-
-                Divider()
-                    .padding(.horizontal, 16)
-
-                // Add block picker
-                if isAddingBlock {
-                    addBlockPicker
-                        .padding(.horizontal, 16)
-                }
-
-                // Reflection blocks or ghost prompts / AI prompts
-                if sortedReflections.isEmpty && !isAddingBlock {
-                    if isLoadingPrompts {
-                        // Loading indicator while AI prompts are being generated
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Generating prompts...")
-                                .font(.groveBodySecondary)
-                                .foregroundStyle(Color.textTertiary)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                    }
-
-                    // Show AI prompts if available, otherwise static ghost prompts
-                    let visiblePrompts = aiPrompts.filter { !dismissedPromptIDs.contains($0.id) }
-                    if !visiblePrompts.isEmpty {
-                        aiPromptRows(visiblePrompts)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                    } else if !isLoadingPrompts {
-                        ghostPrompts
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                    }
-                } else {
-                    ForEach(sortedReflections) { block in
-                        HStack(alignment: .top, spacing: 4) {
-                            // Drag handle
-                            Image(systemName: "line.3.horizontal")
-                                .font(.caption2)
-                                .foregroundStyle(Color.textTertiary)
-                                .frame(width: 12, height: 20)
-                                .padding(.top, 14)
-                                .onDrag {
-                                    draggingBlock = block
-                                    return NSItemProvider(object: block.id.uuidString as NSString)
-                                }
-
-                            reflectionBlockCard(block)
-                        }
-                        .onDrop(of: [.text], delegate: BlockDropDelegate(
-                            targetBlock: block,
-                            allBlocks: sortedReflections,
-                            draggingBlock: $draggingBlock,
-                            modelContext: modelContext
-                        ))
-                        .padding(.horizontal, 12)
-                    }
-                }
-
-                Spacer(minLength: 40)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.bgInspector)
         .alert("Delete Reflection Block?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
                 blockToDelete = nil
@@ -280,7 +160,6 @@ struct ItemReaderView: View {
                         let wasEditing = isEditingContent
                         isEditingContent.toggle()
                         if wasEditing {
-                            // Mark AI-generated synthesis notes as edited
                             if item.metadata["isAIGenerated"] == "true" && item.metadata["isAIEdited"] != "true" {
                                 item.metadata["isAIEdited"] = "true"
                             }
@@ -301,7 +180,6 @@ struct ItemReaderView: View {
                 .tracking(-0.36)
                 .textSelection(.enabled)
 
-            // AI Draft / Edited badge for synthesis notes
             if item.metadata["isAIGenerated"] == "true" {
                 HStack(spacing: 4) {
                     Image(systemName: item.metadata["isAIEdited"] == "true" ? "pencil" : "sparkles")
@@ -346,16 +224,12 @@ struct ItemReaderView: View {
                 Label(item.createdAt.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar")
                     .font(.groveMeta)
                     .foregroundStyle(Color.textTertiary)
-                Label("\(item.annotations.count) annotations", systemImage: "note.text")
-                    .font(.groveMeta)
-                    .foregroundStyle(Color.textTertiary)
                 Label("\(item.reflections.count) reflections", systemImage: "text.alignleft")
                     .font(.groveMeta)
                     .foregroundStyle(Color.textTertiary)
 
                 Spacer()
 
-                // Growth stage indicator with tooltip breakdown
                 HStack(spacing: 4) {
                     GrowthStageIndicator(stage: item.growthStage, showLabel: true)
                     Text("·")
@@ -371,7 +245,7 @@ struct ItemReaderView: View {
         .padding()
     }
 
-    // MARK: - Source Content (left pane body)
+    // MARK: - Source Content
 
     @ViewBuilder
     private var sourceContent: some View {
@@ -418,7 +292,7 @@ struct ItemReaderView: View {
                 }
             }
         } else if isEditingContent && item.type == .note {
-            WikiLinkTextEditor(
+            RichMarkdownEditor(
                 text: Binding(
                     get: { item.content ?? "" },
                     set: {
@@ -487,6 +361,73 @@ struct ItemReaderView: View {
         return nil
     }
 
+    // MARK: - Reflections Section
+
+    private var reflectionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            HStack {
+                Text("REFLECTIONS")
+                    .sectionHeaderStyle()
+
+                Text("\(item.reflections.count)")
+                    .font(.groveBadge)
+                    .foregroundStyle(Color.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentBadge)
+                    .clipShape(Capsule())
+
+                Spacer()
+            }
+
+            Divider()
+
+            // Always show ghost prompt buttons or AI prompts at top
+            if isLoadingPrompts && sortedReflections.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Generating prompts...")
+                        .font(.groveBodySecondary)
+                        .foregroundStyle(Color.textTertiary)
+                }
+                .padding(.top, 4)
+            }
+
+            let visiblePrompts = aiPrompts.filter { !dismissedPromptIDs.contains($0.id) }
+            if !visiblePrompts.isEmpty {
+                aiPromptRows(visiblePrompts)
+            } else if !isLoadingPrompts {
+                ghostPrompts
+            }
+
+            // Existing reflection blocks
+            ForEach(sortedReflections) { block in
+                HStack(alignment: .top, spacing: 4) {
+                    // Drag handle
+                    Image(systemName: "line.3.horizontal")
+                        .font(.caption2)
+                        .foregroundStyle(Color.textTertiary)
+                        .frame(width: 12, height: 20)
+                        .padding(.top, 14)
+                        .onDrag {
+                            draggingBlock = block
+                            return NSItemProvider(object: block.id.uuidString as NSString)
+                        }
+
+                    reflectionBlockCard(block)
+                }
+                .onDrop(of: [.text], delegate: BlockDropDelegate(
+                    targetBlock: block,
+                    allBlocks: sortedReflections,
+                    draggingBlock: $draggingBlock,
+                    modelContext: modelContext
+                ))
+            }
+        }
+    }
+
     // MARK: - Ghost Prompts
 
     private var ghostPrompts: some View {
@@ -523,7 +464,6 @@ struct ItemReaderView: View {
 
                     Spacer()
 
-                    // Dismiss button
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) {
                             _ = dismissedPromptIDs.insert(prompt.id)
@@ -579,64 +519,11 @@ struct ItemReaderView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Add Block Picker
-
-    private var addBlockPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CHOOSE BLOCK TYPE")
-                .sectionHeaderStyle()
-
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 6) {
-                ForEach(ReflectionBlockType.allCases, id: \.self) { type in
-                    Button {
-                        createBlock(type: type, content: "", highlight: nil)
-                        isAddingBlock = false
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: type.systemImage)
-                                .font(.system(size: 14))
-                            Text(type.displayName)
-                                .font(.groveBodySmall)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.bgCard)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .strokeBorder(Color.borderPrimary, lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Button("Cancel") {
-                isAddingBlock = false
-            }
-            .font(.groveBodySecondary)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(12)
-        .background(Color.bgCard)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.borderPrimary, lineWidth: 1)
-        )
-    }
-
     // MARK: - Reflection Block Card
 
     private func reflectionBlockCard(_ block: ReflectionBlock) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header: type label + actions
+            // Header: type label + video timestamp + actions
             HStack(spacing: 6) {
                 Image(systemName: block.blockType.systemImage)
                     .font(.caption2)
@@ -646,6 +533,24 @@ struct ItemReaderView: View {
                     .tracking(0.5)
                     .foregroundStyle(Color.textSecondary)
 
+                // Video timestamp seek button
+                if isVideoItem, let ts = block.videoTimestamp {
+                    Button {
+                        videoSeekTarget = Double(ts)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.caption2)
+                            Text(Double(ts).formattedTimestamp)
+                                .font(.groveMeta)
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(Color.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Jump to \(Double(ts).formattedTimestamp) in video")
+                }
+
                 Spacer()
 
                 Text(block.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -653,7 +558,6 @@ struct ItemReaderView: View {
                     .foregroundStyle(Color.textTertiary)
 
                 Menu {
-                    // Change block type
                     Menu("Change Type") {
                         ForEach(ReflectionBlockType.allCases, id: \.self) { type in
                             Button {
@@ -705,7 +609,6 @@ struct ItemReaderView: View {
             if editingBlockID == block.id {
                 editBlockEditor(block)
             } else if block.content.isEmpty {
-                // Inline editing for empty blocks — auto-enter edit mode
                 Button {
                     editingBlockID = block.id
                     editBlockContent = block.content
@@ -720,7 +623,6 @@ struct ItemReaderView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // Render content as markdown, click to edit
                 Button {
                     editingBlockID = block.id
                     editBlockContent = block.content
@@ -749,7 +651,7 @@ struct ItemReaderView: View {
 
     private func editBlockEditor(_ block: ReflectionBlock) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            WikiLinkTextEditor(
+            RichMarkdownEditor(
                 text: $editBlockContent,
                 sourceItem: item,
                 minHeight: 60
@@ -780,19 +682,20 @@ struct ItemReaderView: View {
 
     private func createBlock(type: ReflectionBlockType, content: String, highlight: String?) {
         let nextPosition = (sortedReflections.last?.position ?? -1) + 1
+        let timestamp: Int? = isVideoItem ? Int(videoCurrentTime) : nil
         let block = ReflectionBlock(
             item: item,
             blockType: type,
             content: content,
             highlight: highlight,
-            position: nextPosition
+            position: nextPosition,
+            videoTimestamp: timestamp
         )
         modelContext.insert(block)
         item.reflections.append(block)
         item.updatedAt = .now
         try? modelContext.save()
 
-        // Auto-enter edit mode for the new block
         editingBlockID = block.id
         editBlockContent = content
     }
@@ -809,7 +712,6 @@ struct ItemReaderView: View {
         editingBlockID = nil
         editBlockContent = ""
 
-        // Trigger connection suggestions after reflection save
         triggerSuggestions()
     }
 
@@ -820,249 +722,9 @@ struct ItemReaderView: View {
         try? modelContext.save()
     }
 
-    // MARK: - Annotations (legacy)
-
-    private var sortedAnnotations: [Annotation] {
-        item.annotations.sorted { $0.createdAt < $1.createdAt }
-    }
-
-    private var annotationsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("ANNOTATIONS")
-                    .sectionHeaderStyle()
-
-                Text("\(item.annotations.count)")
-                    .font(.groveBadge)
-                    .foregroundStyle(Color.textMuted)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentBadge)
-                    .clipShape(Capsule())
-
-                Spacer()
-
-                Button {
-                    isAddingAnnotation = true
-                    newAnnotationText = ""
-                } label: {
-                    if isVideoItem {
-                        Label("Annotate at \(videoCurrentTime.formattedTimestamp)", systemImage: "plus.circle")
-                            .font(.groveMeta)
-                    } else {
-                        Label("Add Annotation", systemImage: "plus.circle")
-                            .font(.groveMeta)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-
-            if isAddingAnnotation {
-                newAnnotationEditor
-            }
-
-            if sortedAnnotations.isEmpty && !isAddingAnnotation {
-                Text("No annotations yet. Add one to capture your thoughts.")
-                    .font(.groveBody)
-                    .foregroundStyle(Color.textTertiary)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(sortedAnnotations) { annotation in
-                    annotationCard(annotation)
-                }
-            }
-        }
-    }
-
-    private var newAnnotationEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("New Annotation")
-                .font(.groveBadge)
-                .foregroundStyle(Color.textSecondary)
-
-            WikiLinkTextEditor(
-                text: $newAnnotationText,
-                sourceItem: item,
-                minHeight: 80
-            )
-
-            if isVideoItem {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.badge.checkmark")
-                        .font(.caption2)
-                    Text("Timestamp: \(videoCurrentTime.formattedTimestamp)")
-                        .font(.caption2)
-                }
-                .foregroundStyle(Color.textSecondary)
-            }
-
-            Text("Supports markdown: **bold**, *italic*, `code`, # headings, [links](url), [[wiki-links]]")
-                .font(.caption2)
-                .foregroundStyle(Color.textTertiary)
-
-            HStack {
-                Button("Cancel") {
-                    isAddingAnnotation = false
-                    newAnnotationText = ""
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("Save") {
-                    saveNewAnnotation()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(Color.textPrimary)
-                .disabled(newAnnotationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .keyboardShortcut(.return, modifiers: .command)
-            }
-        }
-        .padding(12)
-        .background(Color.bgCard)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.borderPrimary, lineWidth: 1)
-        )
-    }
-
-    private var isVideoItem: Bool {
-        item.type == .video && localVideoURL != nil
-    }
-
-    private func annotationCard(_ annotation: Annotation) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                if isVideoItem, let position = annotation.position {
-                    Button {
-                        videoSeekTarget = Double(position)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "play.circle.fill")
-                                .font(.groveMeta)
-                            Text(Double(position).formattedTimestamp)
-                                .font(.groveMeta)
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(Color.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Jump to \(Double(position).formattedTimestamp) in video")
-                } else {
-                    Label(annotation.createdAt.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
-                        .font(.groveMeta)
-                        .foregroundStyle(Color.textTertiary)
-                }
-
-                Spacer()
-
-                Menu {
-                    Button {
-                        editingAnnotationID = annotation.id
-                        editAnnotationText = annotation.content
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
-                    }
-                    Button(role: .destructive) {
-                        deleteAnnotation(annotation)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.groveMeta)
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 20)
-            }
-
-            if editingAnnotationID == annotation.id {
-                editAnnotationEditor(annotation)
-            } else {
-                MarkdownTextView(markdown: annotation.content)
-                    .textSelection(.enabled)
-            }
-        }
-        .padding(12)
-        .background(Color.bgCard)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.borderPrimary, lineWidth: 1)
-        )
-    }
-
-    private func editAnnotationEditor(_ annotation: Annotation) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            WikiLinkTextEditor(
-                text: $editAnnotationText,
-                sourceItem: item,
-                minHeight: 60
-            )
-
-            HStack {
-                Button("Cancel") {
-                    editingAnnotationID = nil
-                    editAnnotationText = ""
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("Save") {
-                    saveEditedAnnotation(annotation)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(editAnnotationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-    }
-
-    // MARK: - Annotation Actions
-
-    private func saveNewAnnotation() {
-        let content = newAnnotationText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else { return }
-
-        let timestamp: Int? = isVideoItem ? Int(videoCurrentTime) : nil
-        let annotation = Annotation(item: item, content: content, position: timestamp)
-        modelContext.insert(annotation)
-        item.annotations.append(annotation)
-        item.updatedAt = .now
-        try? modelContext.save()
-
-        newAnnotationText = ""
-        isAddingAnnotation = false
-
-        triggerSuggestions()
-    }
-
-    private func saveEditedAnnotation(_ annotation: Annotation) {
-        let content = editAnnotationText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else { return }
-
-        annotation.content = content
-        item.updatedAt = .now
-        try? modelContext.save()
-
-        editingAnnotationID = nil
-        editAnnotationText = ""
-    }
-
-    private func deleteAnnotation(_ annotation: Annotation) {
-        item.annotations.removeAll { $0.id == annotation.id }
-        modelContext.delete(annotation)
-        item.updatedAt = .now
-        try? modelContext.save()
-    }
-
     // MARK: - AI Reflection Prompts
 
     private func loadAIPrompts() {
-        // Only generate if item has no reflections
         guard item.reflections.isEmpty else { return }
         guard LLMServiceConfig.isConfigured else { return }
 
@@ -1097,7 +759,6 @@ struct ItemReaderView: View {
     private func acceptSuggestion(_ suggestion: ConnectionSuggestion) {
         let viewModel = ItemViewModel(modelContext: modelContext)
         guard let connection = viewModel.createConnection(source: item, target: suggestion.targetItem, type: suggestion.suggestedType) else { return }
-        // Store LLM reason as connection note
         connection.note = suggestion.reason
         connection.isAutoGenerated = true
         try? modelContext.save()

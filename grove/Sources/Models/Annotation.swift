@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 
+// DEPRECATED: migrated to ReflectionBlock. Kept in schema for SwiftData compatibility.
 @Model
 final class Annotation {
     var id: UUID

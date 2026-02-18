@@ -53,7 +53,7 @@ final class ReflectionPromptService: ReflectionPromptServiceProtocol {
 
         Return a JSON object with:
         - "prompts": an array of 2-3 objects, each with:
-          - "block_type": one of "keyInsight", "connection", "question", "disagreement", "summary", "freeform"
+          - "block_type": one of "keyInsight", "connection", "disagreement"
           - "text": the prompt text (1-2 sentences, max 150 characters). \
             Reference the user's own items by name using [[Item Title]] wiki-link syntax when relevant.
 
@@ -61,7 +61,7 @@ final class ReflectionPromptService: ReflectionPromptServiceProtocol {
         - Prompts should be specific to the item's content, not generic.
         - Reference the user's other items and reflections by title using [[wiki-links]] when meaningful.
         - Vary the block types — don't repeat the same type.
-        - Prefer "question" and "connection" types to encourage cross-pollination.
+        - Prefer "connection" and "disagreement" types to encourage cross-pollination.
         - If the item has related items on the same board, prompt the user to compare or connect them.
         - Only return valid JSON, no extra text.
         """
@@ -106,7 +106,7 @@ final class ReflectionPromptService: ReflectionPromptServiceProtocol {
         }
 
         return parsed.prompts.prefix(3).compactMap { entry in
-            let blockType = ReflectionBlockType(rawValue: entry.block_type) ?? .question
+            let blockType = ReflectionBlockType(rawValue: entry.block_type) ?? .keyInsight
             let text = String(entry.text.prefix(150))
             guard !text.isEmpty else { return nil }
             return ReflectionPrompt(suggestedBlockType: blockType, text: text)

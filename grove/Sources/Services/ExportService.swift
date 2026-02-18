@@ -212,12 +212,18 @@ final class ExportService {
             md += content + "\n\n"
         }
 
-        // Annotations
-        if !item.annotations.isEmpty {
-            md += "## Annotations\n\n"
-            for annotation in item.annotations.sorted(by: { $0.createdAt < $1.createdAt }) {
-                md += "### \(annotation.createdAt.formatted(date: .abbreviated, time: .shortened))\n\n"
-                md += annotation.content + "\n\n"
+        // Reflections
+        if !item.reflections.isEmpty {
+            md += "## Reflections\n\n"
+            for block in item.reflections.sorted(by: { $0.position < $1.position }) {
+                md += "### \(block.blockType.displayName) — \(block.createdAt.formatted(date: .abbreviated, time: .shortened))\n\n"
+                if let ts = block.videoTimestamp {
+                    md += "*Timestamp: \(Double(ts).formattedTimestamp)*\n\n"
+                }
+                if let highlight = block.highlight, !highlight.isEmpty {
+                    md += "> \(highlight)\n\n"
+                }
+                md += block.content + "\n\n"
             }
         }
 
@@ -257,12 +263,12 @@ final class ExportService {
             md += content + "\n\n"
         }
 
-        // Annotations
-        if !item.annotations.isEmpty {
-            md += "### Annotations\n\n"
-            for annotation in item.annotations.sorted(by: { $0.createdAt < $1.createdAt }) {
-                md += "> \(annotation.content)\n"
-                md += "> — *\(annotation.createdAt.formatted(date: .abbreviated, time: .shortened))*\n\n"
+        // Reflections
+        if !item.reflections.isEmpty {
+            md += "### Reflections\n\n"
+            for block in item.reflections.sorted(by: { $0.position < $1.position }) {
+                md += "> **\(block.blockType.displayName):** \(block.content)\n"
+                md += "> — *\(block.createdAt.formatted(date: .abbreviated, time: .shortened))*\n\n"
             }
         }
 
@@ -412,11 +418,11 @@ final class ExportService {
                 <outline text="\(escapeXML(item.title))" type="\(item.type.rawValue)" htmlUrl="\(escapeXML(url))">
             """
 
-            // Annotations as sub-outlines
-            for annotation in item.annotations.sorted(by: { $0.createdAt < $1.createdAt }) {
-                let preview = String(annotation.content.prefix(200))
+            // Reflections as sub-outlines
+            for block in item.reflections.sorted(by: { $0.position < $1.position }) {
+                let preview = String(block.content.prefix(200))
                 opml += """
-                      <outline text="\(escapeXML(preview))" type="annotation" />
+                      <outline text="\(escapeXML(preview))" type="reflection" />
                 """
             }
 
@@ -500,11 +506,11 @@ final class ExportService {
                 html += "<div class=\"content\">\(escapeHTML(content))</div>"
             }
 
-            if !item.annotations.isEmpty {
-                for annotation in item.annotations.sorted(by: { $0.createdAt < $1.createdAt }) {
+            if !item.reflections.isEmpty {
+                for block in item.reflections.sorted(by: { $0.position < $1.position }) {
                     html += "<div class=\"annotation\">"
-                    html += "<p>\(escapeHTML(annotation.content))</p>"
-                    html += "<p class=\"date\">\(annotation.createdAt.formatted(date: .abbreviated, time: .shortened))</p>"
+                    html += "<p><strong>\(escapeHTML(block.blockType.displayName)):</strong> \(escapeHTML(block.content))</p>"
+                    html += "<p class=\"date\">\(block.createdAt.formatted(date: .abbreviated, time: .shortened))</p>"
                     html += "</div>"
                 }
             }

@@ -28,7 +28,7 @@ struct NudgeBarView: View {
                         .font(.groveBody)
                         .foregroundStyle(Color.textSecondary)
 
-                    Text(nudge.message)
+                    Text(nudge.displayMessage)
                         .font(.groveBodySecondary)
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(2)
@@ -126,8 +126,10 @@ struct NudgeBarView: View {
         let text = reflectionText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty, let item = nudge.targetItem else { return }
 
-        let annotation = Annotation(item: item, content: text)
-        modelContext.insert(annotation)
+        let nextPosition = (item.reflections.map(\.position).max() ?? -1) + 1
+        let block = ReflectionBlock(item: item, blockType: .keyInsight, content: text, position: nextPosition)
+        modelContext.insert(block)
+        item.reflections.append(block)
 
         resurfacingService?.recordEngagement(for: item)
 
@@ -160,6 +162,8 @@ struct NudgeBarView: View {
             }
         case .staleInbox:
             onTriageInbox?()
+        case .dialecticalCheckIn:
+            NotificationCenter.default.post(name: .groveStartCheckIn, object: nudge)
         case .connectionPrompt, .streak:
             break
         }
@@ -171,6 +175,34 @@ struct NudgeBarView: View {
             NudgeSettings.recordAction(type: nudge.type, actedOn: false)
             try? modelContext.save()
         }
+    }
+}
+
+// MARK: - Nudge Display Helpers
+
+extension Nudge {
+    /// The user-facing message. For dialectical check-ins, extracts the portion before `|||`.
+    var displayMessage: String {
+        if type == .dialecticalCheckIn, let range = message.range(of: "|||") {
+            return String(message[message.startIndex..<range.lowerBound])
+        }
+        return message
+    }
+
+    /// The conversation trigger for check-in nudges.
+    var checkInTrigger: ConversationTrigger? {
+        guard type == .dialecticalCheckIn else { return nil }
+        let parts = message.components(separatedBy: "|||")
+        guard parts.count >= 2 else { return nil }
+        return ConversationTrigger(rawValue: parts[1])
+    }
+
+    /// The opening prompt for check-in nudges.
+    var checkInOpeningPrompt: String? {
+        guard type == .dialecticalCheckIn else { return nil }
+        let parts = message.components(separatedBy: "|||")
+        guard parts.count >= 3 else { return nil }
+        return parts[2]
     }
 }
 
@@ -188,6 +220,7 @@ extension NudgeType {
         case .contradiction: "exclamationmark.triangle"
         case .knowledgeGap: "questionmark.circle"
         case .synthesisPrompt: "doc.on.doc"
+        case .dialecticalCheckIn: "bubble.left.and.bubble.right"
         }
     }
 
@@ -202,6 +235,7 @@ extension NudgeType {
         case .contradiction: "Compare"
         case .knowledgeGap: "Explore"
         case .synthesisPrompt: "Synthesize"
+        case .dialecticalCheckIn: "Chat"
         }
     }
 

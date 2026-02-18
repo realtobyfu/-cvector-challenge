@@ -4,14 +4,14 @@ import SwiftData
 /// Represents a single search result with its source type and relevance score.
 enum SearchResultType: String, Sendable {
     case item = "Items"
-    case annotation = "Annotations"
+    case reflection = "Reflections"
     case tag = "Tags"
     case board = "Boards"
 
     var iconName: String {
         switch self {
         case .item: "doc"
-        case .annotation: "note.text"
+        case .reflection: "text.alignleft"
         case .tag: "tag"
         case .board: "folder"
         }
@@ -28,7 +28,7 @@ struct SearchResult: Identifiable {
     let item: Item?
     let board: Board?
     let tag: Tag?
-    let annotation: Annotation?
+    let reflection: ReflectionBlock?
 }
 
 @MainActor
@@ -38,7 +38,7 @@ final class SearchViewModel {
     var results: [SearchResultType: [SearchResult]] = [:]
     var isSearching = false
 
-    /// Optional board scope — when set, item/annotation results are restricted to this board
+    /// Optional board scope — when set, item/reflection results are restricted to this board
     var scopeBoard: Board?
 
     private var modelContext: ModelContext
@@ -66,10 +66,10 @@ final class SearchViewModel {
             grouped[.item] = itemResults
         }
 
-        // Search annotations
-        let annotationResults = searchAnnotations(query: trimmed)
-        if !annotationResults.isEmpty {
-            grouped[.annotation] = annotationResults
+        // Search reflections
+        let reflectionResults = searchReflections(query: trimmed)
+        if !reflectionResults.isEmpty {
+            grouped[.reflection] = reflectionResults
         }
 
         // Search tags
@@ -93,7 +93,7 @@ final class SearchViewModel {
 
     /// Ordered section types for display
     var orderedSections: [SearchResultType] {
-        [.item, .annotation, .board, .tag].filter { results[$0] != nil }
+        [.item, .reflection, .board, .tag].filter { results[$0] != nil }
     }
 
     // MARK: - Entity Searches
@@ -134,42 +134,42 @@ final class SearchViewModel {
                 item: item,
                 board: nil,
                 tag: nil,
-                annotation: nil
+                reflection: nil
             ))
         }
 
         return scored.sorted { $0.score > $1.score }.prefix(15).map { $0 }
     }
 
-    private func searchAnnotations(query: String) -> [SearchResult] {
-        let descriptor = FetchDescriptor<Annotation>()
-        guard let annotations = try? modelContext.fetch(descriptor) else { return [] }
+    private func searchReflections(query: String) -> [SearchResult] {
+        let descriptor = FetchDescriptor<ReflectionBlock>()
+        guard let reflections = try? modelContext.fetch(descriptor) else { return [] }
 
         let queryLower = query.lowercased()
         var scored: [SearchResult] = []
 
-        for annotation in annotations {
-            // If scoped to a board, filter by the annotation's parent item's boards
+        for block in reflections {
+            // If scoped to a board, filter by the block's parent item's boards
             if let scope = scopeBoard {
-                guard let parentItem = annotation.item,
+                guard let parentItem = block.item,
                       parentItem.boards.contains(where: { $0.id == scope.id }) else { continue }
             }
 
-            let contentScore = fuzzyScore(queryLower, in: annotation.content.lowercased())
+            let contentScore = fuzzyScore(queryLower, in: block.content.lowercased())
             guard contentScore > 0 else { continue }
 
-            let parentTitle = annotation.item?.title ?? "Unknown item"
-            let preview = String(annotation.content.prefix(80))
+            let parentTitle = block.item?.title ?? "Unknown item"
+            let preview = String(block.content.prefix(80))
 
             scored.append(SearchResult(
-                type: .annotation,
+                type: .reflection,
                 title: preview,
-                subtitle: "on \(parentTitle)",
+                subtitle: "\(block.blockType.displayName) on \(parentTitle)",
                 score: contentScore,
-                item: annotation.item,
+                item: block.item,
                 board: nil,
                 tag: nil,
-                annotation: annotation
+                reflection: block
             ))
         }
 
@@ -196,7 +196,7 @@ final class SearchViewModel {
                 item: nil,
                 board: nil,
                 tag: tag,
-                annotation: nil
+                reflection: nil
             ))
         }
 
@@ -224,7 +224,7 @@ final class SearchViewModel {
                 item: nil,
                 board: board,
                 tag: nil,
-                annotation: nil
+                reflection: nil
             ))
         }
 
