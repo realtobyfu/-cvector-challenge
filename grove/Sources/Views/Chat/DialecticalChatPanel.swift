@@ -18,6 +18,7 @@ struct DialecticalChatPanel: View {
     @State private var connectionType: ConnectionType = .related
     @State private var reflectionMessage: ChatMessage?
     @State private var reflectionConversation: Conversation?
+    @State private var noteMessage: ChatMessage?
 
     private var activeConversation: Conversation? {
         selectedConversation
@@ -41,6 +42,9 @@ struct DialecticalChatPanel: View {
         }
         .sheet(item: $reflectionMessage) { message in
             reflectionSheet(for: message)
+        }
+        .sheet(item: $noteMessage) { message in
+            saveNoteSheet(for: message)
         }
     }
 
@@ -197,6 +201,15 @@ struct DialecticalChatPanel: View {
                 NSPasteboard.general.setString(message.content, forType: .string)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
+                    .font(.groveBadge)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.textMuted)
+
+            Button {
+                noteMessage = message
+            } label: {
+                Label("Save as note", systemImage: "note.text.badge.plus")
                     .font(.groveBadge)
             }
             .buttonStyle(.plain)
@@ -508,6 +521,17 @@ struct DialecticalChatPanel: View {
         }
     }
 
+    // MARK: - Save Note Sheet
+
+    private func saveNoteSheet(for message: ChatMessage) -> some View {
+        SaveNoteSheet(
+            message: message,
+            conversation: activeConversation,
+            dialecticsService: dialecticsService,
+            onDismiss: { noteMessage = nil }
+        )
+    }
+
     // MARK: - Reflection Sheet
 
     private func reflectionSheet(for message: ChatMessage) -> some View {
@@ -737,5 +761,114 @@ private struct SaveReflectionSheet: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             onDismiss()
         }
+    }
+}
+
+// MARK: - Save Note Sheet
+
+private struct SaveNoteSheet: View {
+    let message: ChatMessage
+    let conversation: Conversation?
+    let dialecticsService: DialecticsService
+    let onDismiss: () -> Void
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var editedTitle: String = ""
+    @State private var saved = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            Text("Save as Note")
+                .font(.groveItemTitle)
+                .foregroundStyle(Color.textPrimary)
+
+            // Title field
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("TITLE")
+                    .sectionHeaderStyle()
+
+                TextField("Note title", text: $editedTitle)
+                    .textFieldStyle(.plain)
+                    .font(.groveBody)
+                    .padding(Spacing.xs)
+                    .background(Color.bgInput)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.borderInput, lineWidth: 1)
+                    )
+            }
+
+            // Content preview
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("CONTENT")
+                    .sectionHeaderStyle()
+
+                ScrollView {
+                    Text(message.content)
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 150)
+                .padding(Spacing.xs)
+                .background(Color.bgCard)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.borderInput, lineWidth: 1)
+                )
+            }
+
+            // Actions
+            HStack {
+                Button("Cancel") {
+                    onDismiss()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                if saved {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .font(.groveBadge)
+                        .foregroundStyle(Color.textSecondary)
+                }
+
+                Button("Save Note") {
+                    saveNote()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.accentSelection)
+                .disabled(editedTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(Spacing.xl)
+        .frame(width: 420)
+        .onAppear {
+            editedTitle = extractTitle(from: message.content)
+        }
+    }
+
+    private func saveNote() {
+        guard let conv = conversation else { return }
+        _ = dialecticsService.saveAsNote(
+            content: message.content,
+            title: editedTitle,
+            conversation: conv,
+            context: modelContext
+        )
+        saved = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            onDismiss()
+        }
+    }
+
+    private func extractTitle(from content: String) -> String {
+        // Take first sentence, capped at 100 characters
+        let sentence = content.components(separatedBy: CharacterSet(charactersIn: ".?!")).first ?? ""
+        let trimmed = sentence.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return "Note from conversation" }
+        return trimmed.count > 100 ? String(trimmed.prefix(100)) : trimmed
     }
 }
