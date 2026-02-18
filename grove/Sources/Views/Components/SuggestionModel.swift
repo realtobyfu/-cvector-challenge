@@ -1,6 +1,14 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Prompt Bubble (shared between HomeView and ConversationStarterService)
+
+struct PromptBubble: Identifiable {
+    let id = UUID()
+    let prompt: String
+    let label: String
+}
+
 // MARK: - Suggestion Types (shared across HomeView and BoardDetailView)
 
 enum SuggestionType: String {

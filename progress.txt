@@ -14,3 +14,19 @@ Implementation:
 - ContentViewNotificationHandlers handles the notification: creates a new Conversation, immediately sends the prompt as the first user message via DialecticsService.sendMessage, then opens the chat panel
 - Moved Suggestion/SuggestionType models to Views/Components/SuggestionModel.swift (was defined inline in HomeView but also used by BoardDetailView)
 - Build passes with zero errors
+
+## US-002 — Conversation starter generation service
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- Created ConversationStarterService (grove/Sources/Services/ConversationStarterService.swift)
+- @MainActor @Observable class with ConversationStarterServiceProtocol (also @MainActor to satisfy Swift 6 Sendable rules)
+- Single LLM call via LLMServiceConfig.makeProvider().complete(system:user:service:) returning JSON array [{prompt, label}]
+- Heuristic fallback: staleness revisit, recent-tag cluster, contradiction resolver — same logic as US-001 but now encapsulated in the service
+- In-memory caching via hasLoaded flag — refresh() is a no-op after first call per app launch
+- Failure-tolerant: LLM errors fall through to heuristics; empty KB shows no bubbles (fallback "Start a conversation" in UI)
+- PromptBubble model moved from HomeView.swift to SuggestionModel.swift so both the service and UI can reference it
+- HomeView updated: @State private var starterService = ConversationStarterService(); .task calls await starterService.refresh(items:)
+- Removed inline buildHeuristicBubbles() from HomeView
+- Build passes with zero errors

@@ -1,14 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Prompt Bubble Model
-
-struct PromptBubble: Identifiable {
-    let id = UUID()
-    let prompt: String
-    let label: String
-}
-
 // MARK: - HomeView
 
 struct HomeView: View {
@@ -17,8 +9,7 @@ struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.updatedAt, order: .reverse) private var allItems: [Item]
 
-    /// Static heuristic prompt bubbles — replaced in US-002 with LLM-generated ones.
-    @State private var promptBubbles: [PromptBubble] = []
+    @State private var starterService = ConversationStarterService()
 
     private var recentItems: [Item] {
         Array(allItems.filter { $0.status == .active || $0.status == .inbox }.prefix(6))
@@ -38,10 +29,7 @@ struct HomeView: View {
         .background(Color.bgPrimary)
         .navigationTitle("")
         .task {
-            buildHeuristicBubbles()
-        }
-        .onChange(of: allItems.count) {
-            buildHeuristicBubbles()
+            await starterService.refresh(items: allItems)
         }
     }
 
@@ -52,11 +40,11 @@ struct HomeView: View {
             Text("DIALECTICS")
                 .sectionHeaderStyle()
 
-            if promptBubbles.isEmpty {
+            if starterService.bubbles.isEmpty {
                 fallbackBubble
             } else {
                 VStack(spacing: Spacing.sm) {
-                    ForEach(promptBubbles) { bubble in
+                    ForEach(starterService.bubbles) { bubble in
                         PromptBubbleView(bubble: bubble) {
                             openConversation(with: bubble.prompt)
                         }
@@ -182,60 +170,6 @@ struct HomeView: View {
         )
     }
 
-    // MARK: - Heuristic Bubble Generation
-
-    private func buildHeuristicBubbles() {
-        var bubbles: [PromptBubble] = []
-
-        // Stale high-value item (untouched 30+ days with reflections)
-        let thirtyDaysAgo = Date().addingTimeInterval(-30 * 24 * 3600)
-        if let stale = allItems.first(where: {
-            $0.status == .active &&
-            $0.updatedAt < thirtyDaysAgo &&
-            !$0.reflections.isEmpty
-        }) {
-            bubbles.append(PromptBubble(
-                prompt: "Let's revisit \"\(stale.title)\" — it's been a while. What do you remember, and has your view changed?",
-                label: "REVISIT"
-            ))
-        }
-
-        // Cluster of recent items in last 7 days
-        let sevenDaysAgo = Date().addingTimeInterval(-7 * 24 * 3600)
-        let recentTags = allItems
-            .filter { $0.createdAt > sevenDaysAgo }
-            .flatMap { $0.tags.map(\.name) }
-        let tagCounts = Dictionary(recentTags.map { ($0, 1) }, uniquingKeysWith: +)
-        if let topTag = tagCounts.max(by: { $0.value < $1.value }), topTag.value >= 2 {
-            let count = allItems.filter { $0.tags.contains(where: { $0.name == topTag.key }) }.count
-            bubbles.append(PromptBubble(
-                prompt: "You've saved \(count) things about \"\(topTag.key)\" recently. What's the central tension or open question in all this?",
-                label: "EXPLORE"
-            ))
-        }
-
-        // Contradiction prompt if any .contradicts connections exist
-        let hasContradiction = allItems.contains { item in
-            item.outgoingConnections.contains { $0.type == .contradicts }
-        }
-        if hasContradiction {
-            bubbles.append(PromptBubble(
-                prompt: "You have items that contradict each other. Want to work through the tension and find a synthesis?",
-                label: "RESOLVE"
-            ))
-        }
-
-        // General fallback when knowledge base exists but nothing specific triggered
-        if bubbles.isEmpty && !allItems.isEmpty {
-            bubbles.append(PromptBubble(
-                prompt: "What idea from your knowledge base has been sitting unresolved the longest?",
-                label: "REFLECT"
-            ))
-        }
-
-        // Cap at 3
-        promptBubbles = Array(bubbles.prefix(3))
-    }
 }
 
 // MARK: - Prompt Bubble View
