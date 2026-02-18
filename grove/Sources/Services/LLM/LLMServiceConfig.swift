@@ -1,13 +1,65 @@
 import Foundation
 
+/// Which LLM backend to use.
+enum LLMProviderType: String, CaseIterable, Sendable {
+    case appleIntelligence = "appleIntelligence"
+    case groq = "groq"
+
+    var displayName: String {
+        switch self {
+        case .appleIntelligence: return "Apple Intelligence"
+        case .groq: return "Groq"
+        }
+    }
+}
+
 /// Stores LLM service configuration in UserDefaults.
 struct LLMServiceConfig: Sendable {
+    private static let providerTypeKey = "grove.llm.providerType"
     private static let apiKeyKey = "grove.llm.apiKey"
     private static let modelKey = "grove.llm.model"
     private static let baseURLKey = "grove.llm.baseURL"
     private static let enabledKey = "grove.llm.enabled"
     private static let totalInputTokensKey = "grove.llm.totalInputTokens"
     private static let totalOutputTokensKey = "grove.llm.totalOutputTokens"
+
+    static var providerType: LLMProviderType {
+        get {
+            let raw = UserDefaults.standard.string(forKey: providerTypeKey) ?? ""
+            return LLMProviderType(rawValue: raw) ?? .appleIntelligence
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: providerTypeKey) }
+    }
+
+    /// Whether Apple Intelligence is available on this OS version and hardware.
+    static var isAppleIntelligenceSupported: Bool {
+        if #available(macOS 26, *) {
+            return AppleIntelligenceProvider.isAvailable
+        }
+        return false
+    }
+
+    /// The effective provider type, accounting for OS availability.
+    /// Falls back to Groq if Apple Intelligence is selected but unsupported.
+    static var effectiveProviderType: LLMProviderType {
+        if providerType == .appleIntelligence && !isAppleIntelligenceSupported {
+            return .groq
+        }
+        return providerType
+    }
+
+    /// Factory that creates the currently selected provider.
+    static func makeProvider() -> LLMProvider {
+        switch effectiveProviderType {
+        case .appleIntelligence:
+            if #available(macOS 26, *) {
+                return AppleIntelligenceProvider()
+            }
+            return GroqProvider()
+        case .groq:
+            return GroqProvider()
+        }
+    }
 
     static var apiKey: String {
         get {
@@ -57,7 +109,13 @@ struct LLMServiceConfig: Sendable {
 
     /// Whether the service is configured and ready to use.
     static var isConfigured: Bool {
-        isEnabled && !apiKey.isEmpty
+        guard isEnabled else { return false }
+        switch effectiveProviderType {
+        case .appleIntelligence:
+            return true
+        case .groq:
+            return !apiKey.isEmpty
+        }
     }
 
     // MARK: - Token Usage Tracking

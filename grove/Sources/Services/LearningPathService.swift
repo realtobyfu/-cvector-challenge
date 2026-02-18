@@ -27,7 +27,7 @@ final class LearningPathService: LearningPathServiceProtocol {
     var isGenerating = false
     var progress: String = ""
 
-    init(provider: LLMProvider = GroqProvider()) {
+    init(provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.provider = provider
     }
 

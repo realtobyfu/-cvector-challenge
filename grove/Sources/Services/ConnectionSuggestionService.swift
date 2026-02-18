@@ -43,7 +43,7 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
     /// Persisted in UserDefaults to survive across sessions.
     private static let dismissedKey = "grove.dismissedConnectionSuggestions"
 
-    init(modelContext: ModelContext, provider: LLMProvider = GroqProvider()) {
+    init(modelContext: ModelContext, provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.modelContext = modelContext
         self.provider = provider
     }

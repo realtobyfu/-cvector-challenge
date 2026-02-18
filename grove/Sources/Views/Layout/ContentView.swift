@@ -115,6 +115,20 @@ struct ContentView: View {
             rightPanel
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation {
+                        if columnVisibility == .detailOnly {
+                            columnVisibility = .automatic
+                        } else {
+                            columnVisibility = .detailOnly
+                        }
+                    }
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                }
+                .help("Toggle Sidebar")
+            }
             ToolbarItem(placement: .status) {
                 SyncStatusView(syncService: syncService)
             }
@@ -125,6 +139,8 @@ struct ContentView: View {
                 inspectorToolbarButton
             }
         }
+        .navigationSplitViewStyle(.balanced)
+        .toolbar(removing: .sidebarToggle)
     }
 
     private var chatToolbarButton: some View {

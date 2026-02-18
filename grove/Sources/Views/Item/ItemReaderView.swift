@@ -744,7 +744,7 @@ struct ItemReaderView: View {
                         .foregroundStyle(Color.textTertiary)
                         .frame(width: 16)
 
-                    Text(prompt.text)
+                    Text(prompt.text.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: ""))
                         .font(.groveGhostText)
                         .foregroundStyle(Color.textTertiary)
 
@@ -1494,7 +1494,7 @@ struct MarkdownTextView: View {
                         Text("\u{2022}")
                             .font(.custom("IBMPlexSans-Regular", size: 13))
                             .foregroundStyle(Color.textSecondary)
-                        renderInlineMarkdown(itemText)
+                        renderParagraphWithWikiLinks(itemText)
                     }
                 }
             }
@@ -1590,7 +1590,8 @@ struct MarkdownTextView: View {
 
     @ViewBuilder
     private func headingView(level: Int, text: String) -> some View {
-        let attributed = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+        let cleanText = text.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: "")
+        let attributed = (try? AttributedString(markdown: cleanText, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(cleanText)
 
         switch level {
         case 1:

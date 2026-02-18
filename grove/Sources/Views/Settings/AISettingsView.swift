@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// Settings view for configuring LLM (AI) features.
-/// Provides API key, model, base URL, enable/disable toggle,
-/// token usage tracking with per-service breakdown, estimated cost,
+/// Provides provider selection (Apple Intelligence / Groq), API key, model, base URL,
+/// enable/disable toggle, token usage tracking with per-service breakdown, estimated cost,
 /// and optional monthly budget limit.
 struct AISettingsView: View {
     @State private var isEnabled = LLMServiceConfig.isEnabled
+    @State private var providerType = LLMServiceConfig.providerType
     @State private var apiKey = LLMServiceConfig.apiKey
     @State private var model = LLMServiceConfig.model
     @State private var baseURL = LLMServiceConfig.baseURL
@@ -20,48 +21,43 @@ struct AISettingsView: View {
                     .onChange(of: isEnabled) { _, newValue in
                         LLMServiceConfig.isEnabled = newValue
                     }
-                Text("When disabled, all AI-powered features (auto-tagging, suggestions, nudges, synthesis) are turned off. No API calls will be made.")
+                Text("When disabled, all AI-powered features (auto-tagging, suggestions, nudges, synthesis) are turned off.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textSecondary)
             }
 
-            Section("LLM Configuration") {
-                SecureField("API Key", text: $apiKey)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: apiKey) { _, newValue in
-                        LLMServiceConfig.apiKey = newValue
+            Section("Provider") {
+                if LLMServiceConfig.isAppleIntelligenceSupported {
+                    Picker("AI Provider", selection: $providerType) {
+                        ForEach(LLMProviderType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
+                        }
                     }
-                Text("Your Groq API key. Get one at console.groq.com.")
-                    .font(.groveBadge)
-                    .foregroundStyle(Color.textTertiary)
-
-                TextField("Model", text: $model)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: model) { _, newValue in
-                        LLMServiceConfig.model = newValue
+                    .pickerStyle(.segmented)
+                    .onChange(of: providerType) { _, newValue in
+                        LLMServiceConfig.providerType = newValue
+                        refreshID = UUID()
                     }
-                Text("Default: moonshotai/kimi-k2-instruct")
-                    .font(.groveBadge)
-                    .foregroundStyle(Color.textTertiary)
 
-                TextField("Base URL", text: $baseURL)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: baseURL) { _, newValue in
-                        LLMServiceConfig.baseURL = newValue
+                    if providerType == .appleIntelligence {
+                        appleIntelligenceStatus
                     }
-                Text("Default: https://api.groq.com/openai/v1/chat/completions")
-                    .font(.groveBadge)
-                    .foregroundStyle(Color.textTertiary)
-
-                HStack {
-                    Image(systemName: LLMServiceConfig.isConfigured ? "checkmark.circle.fill" : "xmark.circle")
-                        .foregroundStyle(LLMServiceConfig.isConfigured ? Color.textPrimary : Color.textTertiary)
-                    Text(LLMServiceConfig.isConfigured ? "Ready" : "Not configured — enter an API key to enable AI features")
-                        .font(.groveBodySmall)
-                        .fontWeight(LLMServiceConfig.isConfigured ? .medium : .regular)
-                        .foregroundStyle(Color.textSecondary)
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "cloud")
+                            .foregroundStyle(Color.textSecondary)
+                        Text("Using Groq cloud API. Apple Intelligence requires macOS 26 or later.")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                    }
                 }
             }
+
+            if providerType == .groq || !LLMServiceConfig.isAppleIntelligenceSupported {
+                groqConfigSection
+            }
+
+            statusSection
 
             tokenUsageSection
 
@@ -97,6 +93,94 @@ struct AISettingsView: View {
         .id(refreshID)
     }
 
+    // MARK: - Apple Intelligence Status
+
+    private var appleIntelligenceStatus: some View {
+        Group {
+            if AppleIntelligenceProvider.isAvailable {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.textPrimary)
+                    Text("Apple Intelligence is available on this Mac.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(Color.textSecondary)
+                    Text("Apple Intelligence is not available. Check that it's enabled in System Settings.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                }
+            }
+            Text("On-device inference. Free, private, no API key required.")
+                .font(.groveBadge)
+                .foregroundStyle(Color.textTertiary)
+        }
+    }
+
+    // MARK: - Groq Configuration Section
+
+    private var groqConfigSection: some View {
+        Section("Groq Configuration") {
+            SecureField("API Key", text: $apiKey)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: apiKey) { _, newValue in
+                    LLMServiceConfig.apiKey = newValue
+                }
+            Text("Your Groq API key. Get one at console.groq.com.")
+                .font(.groveBadge)
+                .foregroundStyle(Color.textTertiary)
+
+            TextField("Model", text: $model)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: model) { _, newValue in
+                    LLMServiceConfig.model = newValue
+                }
+            Text("Default: moonshotai/kimi-k2-instruct")
+                .font(.groveBadge)
+                .foregroundStyle(Color.textTertiary)
+
+            TextField("Base URL", text: $baseURL)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: baseURL) { _, newValue in
+                    LLMServiceConfig.baseURL = newValue
+                }
+            Text("Default: https://api.groq.com/openai/v1/chat/completions")
+                .font(.groveBadge)
+                .foregroundStyle(Color.textTertiary)
+        }
+    }
+
+    // MARK: - Status Section
+
+    private var statusSection: some View {
+        Section("Status") {
+            HStack {
+                Image(systemName: LLMServiceConfig.isConfigured ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundStyle(LLMServiceConfig.isConfigured ? Color.textPrimary : Color.textTertiary)
+                Text(statusText)
+                    .font(.groveBodySmall)
+                    .fontWeight(LLMServiceConfig.isConfigured ? .medium : .regular)
+                    .foregroundStyle(Color.textSecondary)
+            }
+        }
+    }
+
+    private var statusText: String {
+        if !isEnabled {
+            return "AI features disabled"
+        }
+        if LLMServiceConfig.isConfigured {
+            return "Ready — using \(providerType.displayName)"
+        }
+        if providerType == .groq {
+            return "Not configured — enter an API key to enable AI features"
+        }
+        return "Apple Intelligence unavailable on this Mac"
+    }
+
     // MARK: - Token Usage Section
 
     private var tokenUsageSection: some View {
@@ -130,18 +214,20 @@ struct AISettingsView: View {
                 }
             }
 
-            HStack {
-                Text("Estimated cost")
-                    .font(.groveBadge)
-                    .foregroundStyle(Color.textSecondary)
-                Spacer()
-                Text(formatCost(tracker.estimatedCost))
-                    .font(.custom("IBMPlexMono-SemiBold", size: 13))
-                    .foregroundStyle(Color.textPrimary)
+            if providerType == .groq {
+                HStack {
+                    Text("Estimated cost")
+                        .font(.groveBadge)
+                        .foregroundStyle(Color.textSecondary)
+                    Spacer()
+                    Text(formatCost(tracker.estimatedCost))
+                        .font(.custom("IBMPlexMono-SemiBold", size: 13))
+                        .foregroundStyle(Color.textPrimary)
+                }
             }
 
             HStack {
-                Text("Total API calls")
+                Text("Total AI calls")
                     .font(.groveBadge)
                     .foregroundStyle(Color.textSecondary)
                 Spacer()
@@ -150,9 +236,15 @@ struct AISettingsView: View {
                     .foregroundStyle(Color.textPrimary)
             }
 
-            Text("Based on $1.50 per million tokens (blended rate).")
-                .font(.groveBadge)
-                .foregroundStyle(Color.textTertiary)
+            if providerType == .groq {
+                Text("Based on $1.50 per million tokens (blended rate).")
+                    .font(.groveBadge)
+                    .foregroundStyle(Color.textTertiary)
+            } else {
+                Text("Apple Intelligence runs on-device at no cost. Token counts are estimated.")
+                    .font(.groveBadge)
+                    .foregroundStyle(Color.textTertiary)
+            }
 
             Button("Reset Usage") {
                 tracker.resetAll()
@@ -181,9 +273,11 @@ struct AISettingsView: View {
                             Text(formatNumber(service.totalTokens) + " tokens")
                                 .font(.groveMeta)
                                 .foregroundStyle(Color.textPrimary)
-                            Text(formatCost(Double(service.totalTokens) / 1_000_000.0 * 1.50))
-                                .font(.groveBadge)
-                                .foregroundStyle(Color.textSecondary)
+                            if providerType == .groq {
+                                Text(formatCost(Double(service.totalTokens) / 1_000_000.0 * 1.50))
+                                    .font(.groveBadge)
+                                    .foregroundStyle(Color.textSecondary)
+                            }
                         }
                     }
                 }
@@ -248,7 +342,7 @@ struct AISettingsView: View {
                 }
             }
 
-            Text("When the budget is reached, AI features pause automatically. No further API calls will be made.")
+            Text("When the budget is reached, AI features pause automatically. No further calls will be made.")
                 .font(.groveBadge)
                 .foregroundStyle(Color.textTertiary)
         }
@@ -275,6 +369,8 @@ struct AISettingsView: View {
         case "synthesis": return "Synthesis"
         case "digest": return "Weekly Digest"
         case "learning_path": return "Learning Paths"
+        case "overview": return "Article Overview"
+        case "dialectics": return "Dialectical Chat"
         default: return service.capitalized
         }
     }

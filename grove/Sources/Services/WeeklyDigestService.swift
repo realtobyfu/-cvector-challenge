@@ -16,7 +16,7 @@ protocol WeeklyDigestServiceProtocol {
 final class WeeklyDigestService: WeeklyDigestServiceProtocol {
     private let provider: LLMProvider
 
-    init(provider: LLMProvider = GroqProvider()) {
+    init(provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.provider = provider
     }
 

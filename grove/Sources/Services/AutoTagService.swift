@@ -27,7 +27,7 @@ protocol AutoTagServiceProtocol {
 final class AutoTagService: AutoTagServiceProtocol {
     private let provider: LLMProvider
 
-    init(provider: LLMProvider = GroqProvider()) {
+    init(provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.provider = provider
     }
 

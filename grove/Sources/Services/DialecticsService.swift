@@ -32,7 +32,7 @@ final class DialecticsService: DialecticsServiceProtocol {
     private static let contextSummaryThreshold = 20
     private static let keepRecentMessages = 10
 
-    init(provider: LLMProvider = GroqProvider()) {
+    init(provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.provider = provider
     }
 

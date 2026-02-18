@@ -43,7 +43,7 @@ final class GroqProvider: LLMProvider, @unchecked Sendable {
                 ["role": "user", "content": user],
             ],
             "temperature": 0.3,
-            "max_tokens": 2000,
+            "max_tokens": 4096,
         ]
 
         guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }

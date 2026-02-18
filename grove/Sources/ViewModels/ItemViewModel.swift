@@ -202,7 +202,7 @@ final class ItemViewModel {
         \(String(sourceText.prefix(4000)))
         """
 
-        let provider = GroqProvider()
+        let provider = LLMServiceConfig.makeProvider()
         guard let result = await provider.complete(
             system: systemPrompt,
             user: userPrompt,

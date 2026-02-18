@@ -26,7 +26,7 @@ final class SynthesisService: SynthesisServiceProtocol {
     var progress: String = ""
     var lastError: String?
 
-    init(modelContext: ModelContext, provider: LLMProvider = GroqProvider()) {
+    init(modelContext: ModelContext, provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.modelContext = modelContext
         self.provider = provider
     }
