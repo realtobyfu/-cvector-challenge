@@ -30,3 +30,17 @@ Implementation:
 - HomeView updated: @State private var starterService = ConversationStarterService(); .task calls await starterService.refresh(items:)
 - Removed inline buildHeuristicBubbles() from HomeView
 - Build passes with zero errors
+
+## US-003 — Auto-board suggestion on capture
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- AutoTagService modified: when LLM suggests a board that doesn't match any existing board, instead of auto-creating it, stores "pendingBoardSuggestion" in item.metadata and posts Notification.Name.groveNewBoardSuggestion with {itemID, boardName, isColdStart}
+- Existing-board assignment path unchanged: high-confidence matches still auto-assign directly
+- CaptureBarView updated: listens for groveNewBoardSuggestion via onReceive; shows BoardSuggestionBanner inline below the capture field with "Create" and dismiss (×) buttons; auto-dismisses after 5 seconds via Task.sleep; skip suggestion if a board is already selected (currentBoardID != nil)
+- BoardSuggestionBanner: monochromatic, uses bgCard + textSecondary + groveBodySmall; transitions in with .opacity + .move(edge: .top)
+- CaptureBarOverlayView: same banner added; overlay stays open while suggestion is visible, then dismisses with suggestion
+- ItemViewModel.autoTagItem: when LLM is not configured but zero boards exist (cold start), derives a heuristic board name from item title (first 3 words, title-cased), posts groveNewBoardSuggestion; tracks count in UserDefaults "grove.coldStartCaptureCount" — only fires on first 3 captures
+- Notification extension defined in AutoTagService.swift; no new files created
+- Build passes with zero errors

@@ -1,6 +1,12 @@
 import Foundation
 import SwiftData
 
+extension Notification.Name {
+    /// Posted after auto-tagging when a new board should be suggested to the user.
+    /// userInfo keys: "itemID" (UUID), "boardName" (String), "isColdStart" (Bool)
+    static let groveNewBoardSuggestion = Notification.Name("groveNewBoardSuggestion")
+}
+
 /// Response shape expected from the LLM for auto-tagging.
 private struct AutoTagResponse: Decodable {
     struct TagEntry: Decodable {
@@ -100,7 +106,7 @@ final class AutoTagService: AutoTagServiceProtocol {
             item.metadata["summary"] = String(summary.prefix(120))
         }
 
-        // Apply suggested board — auto-create if it doesn't exist
+        // Apply suggested board
         if let suggestedBoard = parsed.suggested_board, !suggestedBoard.isEmpty {
             item.metadata["suggestedBoard"] = suggestedBoard
 
@@ -111,15 +117,27 @@ final class AutoTagService: AutoTagServiceProtocol {
             })
 
             if let board = matchedBoard {
-                // Existing board — assign directly
+                // Existing board — assign directly (high confidence match)
                 if !item.boards.contains(where: { $0.id == board.id }) {
                     item.boards.append(board)
                 }
             } else {
-                // No match — create a new board and assign
-                let newBoard = Board(title: suggestedBoard)
-                context.insert(newBoard)
-                item.boards.append(newBoard)
+                // No matching board — store the suggestion and notify UI to prompt the user
+                let isColdStart = allBoards.isEmpty
+                item.metadata["pendingBoardSuggestion"] = suggestedBoard
+                try? context.save()
+
+                let itemID = item.id
+                NotificationCenter.default.post(
+                    name: .groveNewBoardSuggestion,
+                    object: nil,
+                    userInfo: [
+                        "itemID": itemID,
+                        "boardName": suggestedBoard,
+                        "isColdStart": isColdStart
+                    ]
+                )
+                return
             }
         }
 

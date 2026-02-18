@@ -160,15 +160,49 @@ final class ItemViewModel {
     // MARK: - Auto-Tagging
 
     /// Runs auto-tagging on an item as a background operation.
-    /// Skipped entirely if AI is disabled in settings.
+    /// If AI is configured, calls AutoTagService (which handles board suggestions via notification).
+    /// If AI is not configured but no boards exist (cold start), posts a heuristic board suggestion.
     private func autoTagItem(itemID: UUID, context: ModelContext) async {
-        guard LLMServiceConfig.isConfigured else { return }
-
         let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == itemID })
         guard let item = try? context.fetch(descriptor).first else { return }
 
-        let service = AutoTagService()
-        await service.tagItem(item, in: context)
+        if LLMServiceConfig.isConfigured {
+            let service = AutoTagService()
+            await service.tagItem(item, in: context)
+        } else {
+            // Cold start heuristic: if no boards exist and this is one of the first captures,
+            // suggest a board name derived from the item's title
+            let boardDescriptor = FetchDescriptor<Board>()
+            let allBoards = (try? context.fetch(boardDescriptor)) ?? []
+            guard allBoards.isEmpty else { return }
+
+            // Only suggest on first 3 captures
+            let captureCount = UserDefaults.standard.integer(forKey: "grove.coldStartCaptureCount")
+            guard captureCount < 3 else { return }
+            UserDefaults.standard.set(captureCount + 1, forKey: "grove.coldStartCaptureCount")
+
+            // Derive a board name from the item title (first 2-3 words, title-cased)
+            let words = item.title
+                .components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }
+                .prefix(3)
+            let suggestedName = words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+            guard !suggestedName.isEmpty else { return }
+
+            item.metadata["pendingBoardSuggestion"] = suggestedName
+            try? context.save()
+
+            let itemID = item.id
+            NotificationCenter.default.post(
+                name: .groveNewBoardSuggestion,
+                object: nil,
+                userInfo: [
+                    "itemID": itemID,
+                    "boardName": suggestedName,
+                    "isColdStart": true
+                ]
+            )
+        }
     }
 
     // MARK: - Overview Generation
