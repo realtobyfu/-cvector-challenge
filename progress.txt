@@ -1,29 +1,16 @@
-## Progress Log
+# Ralph Progress Log
+Started: Wed Feb 18 04:31:00 HST 2026
+---
 
-### 2026-02-18 — PRD audit after recent commits
+## US-001 — Home screen is the Dialectics landing state with prompt bubbles
+Status: PASS
+Date: 2026-02-18
 
-**Commits reviewed:** 12a2bbc, a1df6ef, 1d2bd2d, b67e6f4, c2fce39
-
-#### Completed (passes: true)
-- US-008: Save as Reflection from Dialectics — SaveReflectionSheet in DialecticalChatPanel
-- US-009: Create Connection from Dialectics — connectionSheet in DialecticalChatPanel
-- US-010: Conversation history — conversationListPopover + HomeView recent conversations section
-- US-018 (new): Apple Intelligence on-device LLM provider — AppleIntelligenceProvider.swift
-
-#### Partial
-- US-012: System prompt updated to blend Socratic + Hegelian, but Nietzschean mode missing and UI strings not cleaned up
-
-#### Not started
-- US-001: Home screen as Dialectics landing (still traditional dashboard)
-- US-002: ConversationStarterService
-- US-003: Auto-board suggestion on capture
-- US-004: Unboarded items as conversation starter
-- US-005: Full-text search in Library (SearchOverlayView exists but may not search content)
-- US-006: Discuss this (item-anchored conversations)
-- US-007: Save as note from Dialectics (SaveReflectionSheet exists but creates ReflectionBlock, not Item)
-- US-011: Synthesis as Dialectics write tool
-- US-013: Simplify NudgeEngine (SmartNudgeService, CheckInTriggerService still present and active)
-- US-014: Remove LearningPath (model + service + view all still present)
-- US-015: Remove auto WeeklyDigest (WeeklyDigestService still triggered)
-- US-016: Remove ReflectionPromptService from InspectorView (still called in ItemReaderView:1130)
-- US-017: Remove ConnectionSuggestionService from InspectorView (still called at ItemReaderView:1160,1177,1188,1199)
+Implementation:
+- Replaced HomeView dashboard with a Dialectics-first layout: prompt bubbles at top, compact recent items below, CaptureBarView inline with the Recent header
+- Added PromptBubble model and PromptBubbleView component with hover state, label badge, prompt text, and arrow icon
+- Heuristic bubble generator builds 2-3 bubbles based on: stale high-value items (30+ days), recent tag clusters (7-day window), contradiction connections; falls back to "Start a conversation" when knowledge base is empty
+- Added groveStartConversationWithPrompt notification; tapping a bubble fires it with the prompt string
+- ContentViewNotificationHandlers handles the notification: creates a new Conversation, immediately sends the prompt as the first user message via DialecticsService.sendMessage, then opens the chat panel
+- Moved Suggestion/SuggestionType models to Views/Components/SuggestionModel.swift (was defined inline in HomeView but also used by BoardDetailView)
+- Build passes with zero errors

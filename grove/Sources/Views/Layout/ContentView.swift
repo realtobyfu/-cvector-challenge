@@ -898,6 +898,10 @@ struct ContentViewNotificationHandlers: ViewModifier {
                 guard let nudge = notification.object as? Nudge else { return }
                 startCheckInConversation(from: nudge)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .groveStartConversationWithPrompt)) { notification in
+                let prompt = notification.object as? String ?? ""
+                startConversation(withPrompt: prompt)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .groveEnterFocusMode)) { _ in
                 savedColumnVisibility = columnVisibility
                 savedInspectorOverride = inspectorUserOverride
@@ -941,6 +945,30 @@ struct ContentViewNotificationHandlers: ViewModifier {
                 nudgeEngine?.stopSchedule()
                 nudgeEngine = nil
             }
+    }
+
+    private func startConversation(withPrompt prompt: String) {
+        let service = DialecticsService()
+        let conversation = service.startConversation(
+            trigger: .userInitiated,
+            seedItems: [],
+            board: nil,
+            context: modelContext
+        )
+
+        // Pre-fill the prompt as a user message and immediately send it
+        if !prompt.isEmpty {
+            Task { @MainActor in
+                _ = await service.sendMessage(
+                    userText: prompt,
+                    conversation: conversation,
+                    context: modelContext
+                )
+            }
+        }
+
+        selectedConversation = conversation
+        withAnimation { showChatPanel = true }
     }
 
     private func startCheckInConversation(from nudge: Nudge) {

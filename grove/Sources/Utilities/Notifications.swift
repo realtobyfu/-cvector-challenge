@@ -16,4 +16,6 @@ extension Notification.Name {
     static let groveStartCheckIn = Notification.Name("groveStartCheckIn")
     static let groveEnterFocusMode = Notification.Name("groveEnterFocusMode")
     static let groveExitFocusMode = Notification.Name("groveExitFocusMode")
+    /// Object: String — the prompt text to pre-fill as the first user message
+    static let groveStartConversationWithPrompt = Notification.Name("groveStartConversationWithPrompt")
 }
