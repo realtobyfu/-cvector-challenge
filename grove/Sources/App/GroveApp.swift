@@ -14,8 +14,6 @@ struct GroveApp: App {
             Connection.self,
             Annotation.self,
             ReflectionBlock.self,
-            LearningPath.self,
-            LearningPathStep.self,
             Nudge.self,
             Course.self,
             Conversation.self,

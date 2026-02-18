@@ -46,7 +46,6 @@ struct BoardDetailView: View {
     @State private var clusterSynthesisItems: [Item]?
     @State private var clusterSynthesisTitle: String = ""
     @State private var showClusterSynthesisSheet = false
-    @State private var showLearningPathSheet = false
     @State private var itemToDelete: Item?
     @State private var isSuggestionsCollapsed = false
     @State private var boardSuggestions: [Suggestion] = []
@@ -182,7 +181,6 @@ struct BoardDetailView: View {
                     addNoteButton
                 }
 
-                learningPathButton
                 synthesisButton
                 exportButton
 
@@ -225,14 +223,6 @@ struct BoardDetailView: View {
                     }
                 )
             }
-        }
-        .sheet(isPresented: $showLearningPathSheet) {
-            LearningPathSheet(
-                items: filteredItems,
-                topic: board.title,
-                board: board,
-                onCreated: { _ in }
-            )
         }
         .background(boardKeyboardHandlers)
         .task {
@@ -722,16 +712,6 @@ struct BoardDetailView: View {
         .background(Color.accentBadge)
         .clipShape(Capsule())
         .help("Smart board rules: \(board.smartRuleLogic == .and ? "AND" : "OR") logic")
-    }
-
-    private var learningPathButton: some View {
-        Button {
-            showLearningPathSheet = true
-        } label: {
-            Label("Learning Path", systemImage: "list.number")
-        }
-        .help("Generate an ordered learning path from items in this board")
-        .disabled(effectiveItems.count < 2)
     }
 
     private var synthesisButton: some View {

@@ -145,3 +145,16 @@ Implementation:
 - LibraryView: added overdueItems computed property (isResurfacingEligible && isResurfacingOverdue items); revisitBanner view shown when overdueItems.count > 0 — tappable pill showing "N items to revisit"; toggling the banner sets showingRevisitFilter state which filters boardFilteredItems to overdueItems and hides the board filter bar; board filter bar hidden when revisit filter is active
 - NudgeBarView kept in codebase (not wired to any view — NudgeBanner UI not shown in Library or HomeView per spec)
 - Build passes with zero errors
+
+## US-014 — Remove LearningPathView and LearningPathService
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- Deleted grove/Sources/Models/LearningPath.swift (LearningPath, LearningPathStep, LearningPathStepProgress)
+- Deleted grove/Sources/Services/LearningPathService.swift (LearningPathService, LearningPathServiceProtocol, response DTOs)
+- Deleted grove/Sources/Views/LearningPath/LearningPathView.swift (LearningPathSheet, LearningPathDetailView) and removed the now-empty LearningPath/ directory
+- GroveApp.swift: removed LearningPath.self and LearningPathStep.self from SwiftData schema
+- BoardDetailView.swift: removed @State showLearningPathSheet, .sheet(isPresented: $showLearningPathSheet) presentation, learningPathButton toolbar item and its computed property body
+- No navigation, sidebar, or menu references existed beyond BoardDetailView
+- Build passes with zero errors
