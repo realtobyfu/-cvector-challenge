@@ -132,3 +132,16 @@ Implementation:
 - Removed "blends Socratic questioning with Hegelian dialectics" framing; replaced with full three-mode spec
 - DialecticalChatPanel empty state subtitle updated: removed "Socratic questioning and" — now reads "explore your ideas through dialectical reasoning"
 - Build passes with zero errors
+
+## US-013 — Simplify NudgeEngine: remove streak, continue-course, and connection-prompt nudges
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- NudgeEngine.generateNudges(): removed generateConnectionPromptNudge(), generateStreakNudge(), generateContinueCourseNudge() calls and their private method bodies (~200 lines removed)
+- NudgeEngine.startSchedule(): removed generateSmartNudgeOnLaunch() and generateCheckInOnLaunch() calls and their private method bodies; SmartNudgeService and CheckInTriggerService are kept in codebase but no longer called from NudgeEngine
+- NudgeEngine init: removed smartNudgeService and checkInTriggerService dependencies; weeklyDigestService kept (WeeklyDigest removal is US-015)
+- ResurfacingService (spaced resurfacing) and stale-inbox heuristic are kept and still run on their existing schedule
+- LibraryView: added overdueItems computed property (isResurfacingEligible && isResurfacingOverdue items); revisitBanner view shown when overdueItems.count > 0 — tappable pill showing "N items to revisit"; toggling the banner sets showingRevisitFilter state which filters boardFilteredItems to overdueItems and hides the board filter bar; board filter bar hidden when revisit filter is active
+- NudgeBarView kept in codebase (not wired to any view — NudgeBanner UI not shown in Library or HomeView per spec)
+- Build passes with zero errors

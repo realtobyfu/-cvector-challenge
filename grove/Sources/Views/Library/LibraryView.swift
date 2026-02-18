@@ -20,11 +20,20 @@ struct LibraryView: View {
     @State private var searchTask: Task<Void, Never>? = nil
     @State private var filteredResults: [Item] = []
     @State private var isSearching = false
+    @State private var showingRevisitFilter = false
 
     // MARK: - Computed
 
+    /// Items overdue for resurfacing (spaced repetition queue)
+    private var overdueItems: [Item] {
+        allItems.filter { $0.isResurfacingEligible && $0.isResurfacingOverdue }
+    }
+
     /// Items scoped to the board filter (if any), before text search
     private var boardFilteredItems: [Item] {
+        if showingRevisitFilter {
+            return overdueItems
+        }
         guard let boardID = selectedBoardID,
               let board = allBoards.first(where: { $0.id == boardID }) else {
             return allItems.filter { $0.status == .active || $0.status == .inbox }
@@ -49,7 +58,10 @@ struct LibraryView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBar
-            if !allBoards.isEmpty {
+            if !overdueItems.isEmpty {
+                revisitBanner
+            }
+            if !allBoards.isEmpty && !showingRevisitFilter {
                 boardFilterBar
             }
             Divider()
@@ -65,6 +77,42 @@ struct LibraryView: View {
         .onChange(of: allItems.count) { _, _ in
             scheduleSearch(query: searchQuery)
         }
+    }
+
+    // MARK: - Revisit Banner
+
+    private var revisitBanner: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                showingRevisitFilter.toggle()
+                if showingRevisitFilter {
+                    selectedBoardID = nil
+                    searchQuery = ""
+                }
+            }
+        } label: {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.groveMeta)
+                    .foregroundStyle(Color.textSecondary)
+                Text("\(overdueItems.count) item\(overdueItems.count == 1 ? "" : "s") to revisit")
+                    .font(.groveBodySmall)
+                    .foregroundStyle(Color.textSecondary)
+                Spacer()
+                if showingRevisitFilter {
+                    Text("Show all")
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textTertiary)
+                }
+                Image(systemName: showingRevisitFilter ? "xmark" : "chevron.right")
+                    .font(.groveMeta)
+                    .foregroundStyle(Color.textTertiary)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.xs)
+            .background(showingRevisitFilter ? Color.bgCard : Color.bgPrimary)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Search Bar
