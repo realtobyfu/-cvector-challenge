@@ -158,3 +158,14 @@ Implementation:
 - BoardDetailView.swift: removed @State showLearningPathSheet, .sheet(isPresented: $showLearningPathSheet) presentation, learningPathButton toolbar item and its computed property body
 - No navigation, sidebar, or menu references existed beyond BoardDetailView
 - Build passes with zero errors
+
+## US-015 — Remove automatic WeeklyDigest generation
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- NudgeEngine: removed weeklyDigestService property, hasCheckedDigestThisLaunch flag, weeklyDigestService parameter from init, generateWeeklyDigestOnLaunch() call from startSchedule(), and the entire generateWeeklyDigestOnLaunch() private method (~20 lines removed)
+- NudgeEngine.init now takes only modelContext — no breaking change (ContentView.swift already instantiated it as NudgeEngine(modelContext: modelContext))
+- WeeklyDigestService.swift kept in codebase (protocol + implementation unchanged) — can be called manually or via Dialectics in a future story
+- NudgeSettings digestEnabled / digestLastGeneratedAt keys remain in NudgeSettings.swift and NudgeSettingsView.swift (settings UI toggle still present for future on-demand use)
+- Build passes with zero errors

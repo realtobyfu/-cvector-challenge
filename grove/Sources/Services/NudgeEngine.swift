@@ -11,16 +11,10 @@ final class NudgeEngine {
     private var modelContext: ModelContext
     private var timer: Timer?
     private(set) var resurfacingService: ResurfacingService
-    private let weeklyDigestService: WeeklyDigestServiceProtocol
-    private var hasCheckedDigestThisLaunch = false
 
-    init(
-        modelContext: ModelContext,
-        weeklyDigestService: WeeklyDigestServiceProtocol? = nil
-    ) {
+    init(modelContext: ModelContext) {
         self.modelContext = modelContext
         self.resurfacingService = ResurfacingService(modelContext: modelContext)
-        self.weeklyDigestService = weeklyDigestService ?? WeeklyDigestService()
     }
 
     // MARK: - Scheduling
@@ -28,7 +22,6 @@ final class NudgeEngine {
     /// Start periodic nudge generation. Call once on app launch.
     func startSchedule() {
         generateNudges()
-        generateWeeklyDigestOnLaunch()
         let intervalSeconds = TimeInterval(NudgeSettings.scheduleIntervalHours) * 3600
         timer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -197,28 +190,6 @@ final class NudgeEngine {
         let nudge = Nudge(type: .staleInbox, message: message)
         modelContext.insert(nudge)
         try? modelContext.save()
-    }
-
-    // MARK: - Weekly Digest
-
-    /// Check if a weekly digest should be generated on app launch.
-    /// Runs at most once per launch. Checks that 7+ days have passed since the last digest,
-    /// that digest generation is enabled, and that meaningful activity occurred.
-    private func generateWeeklyDigestOnLaunch() {
-        guard !hasCheckedDigestThisLaunch else { return }
-        hasCheckedDigestThisLaunch = true
-
-        guard NudgeSettings.digestEnabled else { return }
-
-        // Check if 7+ days since last digest
-        let lastGenerated = NudgeSettings.digestLastGeneratedAt
-        let sevenDaysInSeconds: TimeInterval = 7 * 24 * 3600
-        guard Date.now.timeIntervalSince1970 - lastGenerated >= sevenDaysInSeconds else { return }
-
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            _ = await self.weeklyDigestService.generateDigest(context: self.modelContext)
-        }
     }
 
     // MARK: - Per-Board Frequency
