@@ -1,59 +1,45 @@
-# Grove — CLAUDE.md
+# Grove — V3 Intelligence Layer
 
-## AUTONOMOUS MODE
+## What This Is
+Mac-native knowledge management app (macOS 15+). V1-V2 built the core: SwiftData models, three-column layout, boards, items, tags, connections, annotations, capture flow, search. V3 adds the LLM layer and reflection system.
 
-You are running in an autonomous Ralph loop. There is NO human operator.
-
-- NEVER ask questions, present options, or request confirmation
-- Read `prd.json` → find first story with `passes: false` → implement it → commit → update prd.json
-- If ambiguous, make the best decision, document reasoning in `progress.txt`
-- If stuck after 3 attempts, log the blocker in `progress.txt` and move to the next story
-- Output <promise>COMPLETE</promise> ONLY when ALL stories in prd.json have passes: true
-- After completing one story, simply stop. Ralph will spawn a fresh instance for the next story.
-
-## Project
-
-- **What:** Mac-native knowledge companion app (macOS 15+)
-- **Full spec:** Read `spec.md` for data model, UI architecture, and feature details
-- **Task list:** Read `prd.json` for user stories and build order
+## References
+- `prd.json` — V3 user stories (S1-S15). Work through these in order.
+- `DESIGN.md` — Complete design system. Follow it exactly for all UI work. Typography (Newsreader, IBM Plex Sans, IBM Plex Mono), color tokens (light + dark mode), component patterns, layout specs.
+- `progress.txt` — Append after each story. Read it first to understand project state.
 
 ## Tech Stack
-
 - Swift, SwiftUI, SwiftData
-- swift-markdown for parsing, TextKit 2 for rendering
-- MVVM: thin Views → ViewModels → Services
-- Tuist for project generation (`tuist generate` to regenerate)
+- MVVM with @Observable ViewModels
+- swift-markdown for rendering, TextKit 2 for editing
+- Tuist for project generation
+- LLM: Groq API (OpenAI-compatible), model moonshotai/kimi-k2-instruct
 
-## Conventions
+## Project Structure
+```
+Grove/
+  Models/       — SwiftData: Item, Board, Tag, Connection, Annotation, Nudge (+ new: ReflectionBlock, LearningPath)
+  Views/        — Organized by feature: {Feature}/{Feature}View.swift
+  ViewModels/   — @Observable classes, one per major view
+  Services/     — Business logic, LLM/ subfolder for AI services
+  Utilities/    — WikiLinkResolver, helpers
+```
 
-- All models in `Grove/Models/`
-- All views in `Grove/Views/{feature}/`
-- All view models in `Grove/ViewModels/`
-- All services in `Grove/Services/`
-- Use SF Symbols for icons, system font only
-- Dark mode first, `.sidebar` material, native macOS patterns
-- Prefer `NavigationSplitView` for layout
-- Use `@Model` for SwiftData entities
-- Use `@Observable` for view models (not ObservableObject)
+## Rules
+1. ONE story per iteration. Do not combine stories.
+2. Read `progress.txt` before starting. Append results after.
+3. Follow `DESIGN.md` for ALL visual decisions — typography, colors, spacing, component patterns. No system fonts. No accent colors. Monochromatic only.
+4. Bundle Newsreader, IBM Plex Sans, IBM Plex Mono as app resources.
+5. All LLM calls must be async, non-blocking, failure-tolerant. If Groq is unreachable, feature degrades silently.
+6. LLM responses are always JSON. Parse defensively — strip markdown fences, handle malformed responses.
+7. Use xclaude MCP tools for builds: `xc-build` to compile, `xc-testing` for tests, `xc-launch` to run.
+8. Never ask questions. Make the best decision and move on.
+9. Commit after each passing story with message: "v3: S{N} — {title}"
 
 ## Quality Checks
-
-Before committing, use the xclaude plugin:
-- Use `xc-build` to build the project
-- Use `xc-testing` to run tests if they exist
-- If xclaude tools fail, fall back to: `tuist generate && xcodebuild -scheme Grove -destination 'platform=macOS' build`
-
-## Skills
-
-Available but use sparingly — only consult when directly relevant:
-- `swift-concurrency` — reference when implementing async/await patterns or actor isolation
-- `swiftui-expert-skill` — reference when stuck on complex SwiftUI layout or navigation issues
-
-Do NOT read these skills on every iteration. Only load them when a story specifically involves concurrency or tricky SwiftUI patterns.
-
-## Git
-
-- Commit after each completed story
-- Commit message format: `[S{id}] {story title}`
-- Update `prd.json` to set `passes: true` after successful commit
-- Append learnings to `progress.txt`
+After every story:
+1. `xc-build` passes with zero errors
+2. No force unwraps except in previews
+3. New services have a protocol for testability
+4. SwiftData models registered in container
+5. UI matches DESIGN.md tokens (spot check colors, fonts, spacing)

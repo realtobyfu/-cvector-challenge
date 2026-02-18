@@ -10,6 +10,7 @@ let project = Project(
             bundleId: "dev.tuist.grove",
             infoPlist: .extendingDefault(with: [
                 "CFBundleIconName": "AppIcon",
+                "ATSApplicationFontsPath": "Fonts",
             ]),
             buildableFolders: [
                 "grove/Sources",
@@ -19,6 +20,7 @@ let project = Project(
             settings: .settings(base: [
                 "SWIFT_STRICT_CONCURRENCY": "complete",
                 "SWIFT_VERSION": "6.0",
+                "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
             ])
         ),
         .target(
