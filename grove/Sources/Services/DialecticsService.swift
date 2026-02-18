@@ -160,7 +160,7 @@ final class DialecticsService: DialecticsServiceProtocol {
                 context.insert(toolCallMsg)
 
                 // Fulfill tool call
-                let toolResult = tools.fulfill(toolName: toolCall.name, args: toolCall.args)
+                let toolResult = await tools.fulfill(toolName: toolCall.name, args: toolCall.args)
                     ?? "Tool \"\(toolCall.name)\" returned no results."
 
                 // Save tool result (hidden)

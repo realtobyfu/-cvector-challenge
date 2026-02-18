@@ -93,3 +93,30 @@ Implementation:
 - InspectorPanelView (ContentView.swift): "Discuss" button added to metadataSection type header row (trailing Spacer + button); fires groveDiscussItem notification; tooltip "Discuss this item in Dialectics"
 - Conversation.seedItemIDs[0] acts as the anchored item ID (stored in existing field, no model migration needed)
 - Build passes with zero errors
+
+## US-007 — Actionable outputs in Dialectics — save as note
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- Added DialecticsService.saveAsNote(content:title:conversation:context:) — creates Item(.note), sets status to .active, spawns a Task to auto-tag via AutoTagService, creates a Connection(related) from the conversation's source item (seedItemIDs.first) to the new note if the conversation is item-anchored; failure-tolerant (try? context.save())
+- DialecticalChatPanel: added @State private var noteMessage: ChatMessage?
+- Added .sheet(item: $noteMessage) bound to saveNoteSheet(for:) method
+- Added "Save as note" button (note.text.badge.plus icon) to assistantActions() — appears on ALL assistant messages (unconditional, unlike "Save as Reflection" which requires referencedItemIDs)
+- Added private struct SaveNoteSheet: editable title field (auto-populated from first sentence of message content, capped at 100 chars), content preview ScrollView, Cancel + Save Note buttons with "Saved" confirmation label; dismisses after 0.6s
+- extractTitle() heuristic: first sentence split on .?! punctuation, trimmed, fallback "Note from conversation"
+- SaveNoteSheet calls saveAsNote() with nil-guard on conversation (no save if no active conversation)
+- Build passes with zero errors
+
+## US-011 — Redesign SynthesisService: add create_synthesis as a Dialectics write tool
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- KnowledgeBaseTools.fulfill() made async (was sync) to support the async SynthesisService call
+- Added create_synthesis tool to KnowledgeBaseTools: accepts item_titles (comma-separated), focus_prompt, and title args; resolves item titles against SwiftData, validates 2-30 item count, calls SynthesisService.generateSynthesis() then createSynthesisItem() to persist the note; returns result string with [[wiki-link]] syntax for the created item title so LLM can reference it
+- toolDescriptions updated: create_synthesis entry documents args, usage guidance ("use this when the user asks to synthesize, summarize across, or integrate multiple items"), and expected return
+- DialecticsService.sendMessage() agentic loop: changed tools.fulfill() call to await tools.fulfill() — no other changes needed since the loop is already async
+- SynthesisService unchanged: still works from Library multi-select path and now also from Dialectics via create_synthesis tool
+- createSynthesis returns item title + UUID so the LLM can embed [[Synthesis Title]] in its subsequent assistant message
+- Build passes with zero errors
