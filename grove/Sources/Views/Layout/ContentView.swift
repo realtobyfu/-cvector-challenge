@@ -900,7 +900,8 @@ struct ContentViewNotificationHandlers: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .groveStartConversationWithPrompt)) { notification in
                 let prompt = notification.object as? String ?? ""
-                startConversation(withPrompt: prompt)
+                let seedIDs = notification.userInfo?["seedItemIDs"] as? [UUID] ?? []
+                startConversation(withPrompt: prompt, seedItemIDs: seedIDs)
             }
             .onReceive(NotificationCenter.default.publisher(for: .groveEnterFocusMode)) { _ in
                 savedColumnVisibility = columnVisibility
@@ -947,11 +948,16 @@ struct ContentViewNotificationHandlers: ViewModifier {
             }
     }
 
-    private func startConversation(withPrompt prompt: String) {
+    private func startConversation(withPrompt prompt: String, seedItemIDs: [UUID] = []) {
+        var seedItems: [Item] = []
+        if !seedItemIDs.isEmpty {
+            let all = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+            seedItems = all.filter { seedItemIDs.contains($0.id) }
+        }
         let service = DialecticsService()
         let conversation = service.startConversation(
             trigger: .userInitiated,
-            seedItems: [],
+            seedItems: seedItems,
             board: nil,
             context: modelContext
         )

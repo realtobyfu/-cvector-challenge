@@ -26,6 +26,11 @@ final class KnowledgeBaseTools {
             return searchByTag(tagName: args["tag_name"] ?? "")
         case "get_board_items":
             return getBoardItems(boardName: args["board_name"] ?? "")
+        case "create_board":
+            return createBoard(
+                boardName: args["board_name"] ?? "",
+                itemTitles: (args["item_titles"] ?? "").components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            )
         default:
             return nil
         }
@@ -54,7 +59,11 @@ final class KnowledgeBaseTools {
     {"tool_call": {"name": "get_board_items", "args": {"board_name": "Board Name"}}}
     List all items in a specific board/collection.
 
-    Only use tool calls when you need to look up specific information. Most of the time, \
+    {"tool_call": {"name": "create_board", "args": {"board_name": "New Board Name", "item_titles": "Title 1, Title 2, Title 3"}}}
+    Create a new board and assign the listed items to it. item_titles is a comma-separated list of exact item titles. \
+    Use this when the user confirms they want to organize a group of items into a new board.
+
+    Only use tool calls when you need to look up specific information or perform a write action. Most of the time, \
     respond directly in conversational markdown.
     """
 
@@ -190,6 +199,40 @@ final class KnowledgeBaseTools {
             if !tags.isEmpty { line += " [\(tags)]" }
             return line
         }.joined(separator: "\n")
+    }
+
+    private func createBoard(boardName: String, itemTitles: [String]) -> String {
+        guard !boardName.isEmpty else {
+            return "Error: board_name is required."
+        }
+
+        let allBoards = (try? modelContext.fetch(FetchDescriptor<Board>())) ?? []
+        // Avoid creating duplicate boards
+        if allBoards.contains(where: { $0.title.lowercased() == boardName.lowercased() }) {
+            return "Board \"\(boardName)\" already exists. Items were not reassigned."
+        }
+
+        let board = Board(title: boardName)
+        modelContext.insert(board)
+
+        // Assign listed items to the new board
+        let allItems = fetchAllItems()
+        var assignedTitles: [String] = []
+        for title in itemTitles {
+            if let item = allItems.first(where: { $0.title.lowercased() == title.lowercased() }) {
+                item.boards.append(board)
+                board.items.append(item)
+                assignedTitles.append(item.title)
+            }
+        }
+
+        try? modelContext.save()
+
+        if assignedTitles.isEmpty {
+            return "Board \"\(boardName)\" created with no items (none of the specified titles matched)."
+        }
+
+        return "Board \"\(boardName)\" created and \(assignedTitles.count) item(s) assigned: \(assignedTitles.joined(separator: ", "))."
     }
 
     // MARK: - Helpers

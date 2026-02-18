@@ -46,7 +46,7 @@ struct HomeView: View {
                 VStack(spacing: Spacing.sm) {
                     ForEach(starterService.bubbles) { bubble in
                         PromptBubbleView(bubble: bubble) {
-                            openConversation(with: bubble.prompt)
+                            openConversation(with: bubble.prompt, seedItemIDs: bubble.clusterItemIDs)
                         }
                     }
                 }
@@ -163,10 +163,15 @@ struct HomeView: View {
 
     // MARK: - Actions
 
-    private func openConversation(with prompt: String) {
+    private func openConversation(with prompt: String, seedItemIDs: [UUID] = []) {
+        var userInfo: [String: Any] = [:]
+        if !seedItemIDs.isEmpty {
+            userInfo["seedItemIDs"] = seedItemIDs
+        }
         NotificationCenter.default.post(
             name: .groveStartConversationWithPrompt,
-            object: prompt
+            object: prompt,
+            userInfo: userInfo.isEmpty ? nil : userInfo
         )
     }
 

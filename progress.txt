@@ -44,3 +44,18 @@ Implementation:
 - ItemViewModel.autoTagItem: when LLM is not configured but zero boards exist (cold start), derives a heuristic board name from item title (first 3 words, title-cased), posts groveNewBoardSuggestion; tracks count in UserDefaults "grove.coldStartCaptureCount" — only fires on first 3 captures
 - Notification extension defined in AutoTagService.swift; no new files created
 - Build passes with zero errors
+
+## US-004 — Unboarded items surfaced as conversation starter
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- ConversationStarterService: added findUnboardedCluster() heuristic — finds unboarded items (no board, status active/inbox) sharing a tag, requires ≥4 items and ≥2 distinct shared tags for quality; returns the largest cluster keyed on the most-shared tag
+- StarterContext extended with unboardedCluster: UnboardedCluster? (struct with sharedTag, items, count)
+- Heuristic buildHeuristics() adds an ORGANIZE-label PromptBubble for the cluster when didShowClusterBubble is false (once per launch gate)
+- LLM path: cluster info appended to user message with "ORGANIZE" label hint; didShowClusterBubble set to true so the flag is consistent with heuristic path
+- PromptBubble model extended with clusterTag: String? and clusterItemIDs: [UUID] (default nil/empty); backward-compatible via memberwise init default parameters
+- KnowledgeBaseTools: added create_board tool — creates a Board entity, assigns items by title match, persists via modelContext.save(); duplicate board names are rejected; added to toolDescriptions static (DialecticsService system prompt automatically embeds it)
+- HomeView: openConversation() now accepts seedItemIDs: [UUID]; ORGANIZE bubbles pass bubble.clusterItemIDs; notification userInfo["seedItemIDs"] carries the IDs
+- ContentView: groveStartConversationWithPrompt handler reads seedItemIDs from userInfo; startConversation(withPrompt:seedItemIDs:) fetches matching Item entities and seeds the conversation context via DialecticsService.startConversation(seedItems:)
+- Build passes with zero errors

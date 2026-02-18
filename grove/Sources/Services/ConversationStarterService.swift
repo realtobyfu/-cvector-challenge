@@ -22,6 +22,8 @@ import Observation
 
     /// Whether this service has fetched starters for the current launch.
     private var hasLoaded: Bool = false
+    /// Track if we already showed the unboarded-cluster bubble this launch (show at most once).
+    private var didShowClusterBubble: Bool = false
 
     private let provider: LLMProvider
 
@@ -55,6 +57,13 @@ import Observation
         let contradictionItems: [Item]   // items with .contradicts outgoing connections
         let topRecentTag: String?
         let topRecentTagCount: Int
+        let unboardedCluster: UnboardedCluster?  // cluster of unboarded items sharing tags
+    }
+
+    struct UnboardedCluster {
+        let sharedTag: String
+        let items: [Item]
+        let count: Int
     }
 
     private func buildContext(from allItems: [Item]) -> StarterContext {
@@ -81,13 +90,43 @@ import Observation
         let tagCounts = Dictionary(recentTags.map { ($0, 1) }, uniquingKeysWith: +)
         let topEntry = tagCounts.max(by: { $0.value < $1.value })
 
+        // Unboarded cluster: items with no board assignment
+        let unboardedCluster = findUnboardedCluster(from: allItems)
+
         return StarterContext(
             recentItems: recentItems,
             staleItems: staleItems,
             contradictionItems: contradictionItems,
             topRecentTag: topEntry?.key,
-            topRecentTagCount: topEntry?.value ?? 0
+            topRecentTagCount: topEntry?.value ?? 0,
+            unboardedCluster: unboardedCluster
         )
+    }
+
+    /// Finds a cluster of unboarded items sharing 2+ tags, with at least 4 items total.
+    /// Returns the largest such cluster, keyed on the most-shared tag.
+    private func findUnboardedCluster(from allItems: [Item]) -> UnboardedCluster? {
+        let unboarded = allItems.filter { $0.boards.isEmpty && ($0.status == .active || $0.status == .inbox) }
+        guard unboarded.count >= 4 else { return nil }
+
+        // Count how many unboarded items share each tag
+        let tagGroups = Dictionary(grouping: unboarded.flatMap { item in
+            item.tags.map { tag in (tag.name, item) }
+        }, by: { $0.0 })
+
+        // Find the tag with the most unboarded items (at least 4 items)
+        let bestEntry = tagGroups
+            .filter { $0.value.count >= 4 }
+            .max(by: { $0.value.count < $1.value.count })
+
+        guard let (tag, pairs) = bestEntry else { return nil }
+
+        // Require that at least 2 distinct tags are shared across these items (quality check)
+        let clusterItems = pairs.map(\.1)
+        let sharedTagNames = Set(clusterItems.flatMap { $0.tags.map(\.name) })
+        guard sharedTagNames.count >= 2 else { return nil }
+
+        return UnboardedCluster(sharedTag: tag, items: clusterItems, count: clusterItems.count)
     }
 
     // MARK: - LLM Generation
@@ -130,6 +169,12 @@ import Observation
         if !context.contradictionItems.isEmpty {
             let titles = context.contradictionItems.prefix(2).map { "\"\($0.title)\"" }.joined(separator: " vs ")
             userLines.append("Items with contradictions: \(titles)")
+        }
+
+        if let cluster = context.unboardedCluster, !didShowClusterBubble {
+            let titles = cluster.items.prefix(4).map { "\"\($0.title)\"" }.joined(separator: ", ")
+            userLines.append("Unboarded items sharing tag \"\(cluster.sharedTag)\" (\(cluster.count) items): \(titles). If you generate a bubble for this, use label \"ORGANIZE\".")
+            didShowClusterBubble = true
         }
 
         let userMessage = userLines.joined(separator: "\n")
@@ -196,6 +241,17 @@ import Observation
                 prompt: "You have items that contradict each other. Want to work through the tension and find a synthesis?",
                 label: "RESOLVE"
             ))
+        }
+
+        // Unboarded cluster — show at most once per launch
+        if let cluster = context.unboardedCluster, !didShowClusterBubble, bubbles.count < 3 {
+            bubbles.append(PromptBubble(
+                prompt: "You have \(cluster.count) items about \"\(cluster.sharedTag)\" floating around without a board. Want to organize them?",
+                label: "ORGANIZE",
+                clusterTag: cluster.sharedTag,
+                clusterItemIDs: cluster.items.map(\.id)
+            ))
+            didShowClusterBubble = true
         }
 
         // Generic fallback when knowledge base has something but no specific trigger

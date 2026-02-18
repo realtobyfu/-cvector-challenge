@@ -17,5 +17,6 @@ extension Notification.Name {
     static let groveEnterFocusMode = Notification.Name("groveEnterFocusMode")
     static let groveExitFocusMode = Notification.Name("groveExitFocusMode")
     /// Object: String — the prompt text to pre-fill as the first user message
+    /// userInfo["seedItemIDs"]: [UUID] — optional item IDs to seed the conversation context
     static let groveStartConversationWithPrompt = Notification.Name("groveStartConversationWithPrompt")
 }

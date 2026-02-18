@@ -7,6 +7,17 @@ struct PromptBubble: Identifiable {
     let id = UUID()
     let prompt: String
     let label: String
+    /// Set for ORGANIZE-type bubbles — the tag that defines the unboarded cluster.
+    let clusterTag: String?
+    /// Set for ORGANIZE-type bubbles — the IDs of the unboarded items in the cluster.
+    let clusterItemIDs: [UUID]
+
+    init(prompt: String, label: String, clusterTag: String? = nil, clusterItemIDs: [UUID] = []) {
+        self.prompt = prompt
+        self.label = label
+        self.clusterTag = clusterTag
+        self.clusterItemIDs = clusterItemIDs
+    }
 }
 
 // MARK: - Suggestion Types (shared across HomeView and BoardDetailView)
