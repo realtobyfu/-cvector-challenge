@@ -4,6 +4,7 @@ struct URLMetadata: Sendable {
     var title: String?
     var description: String?
     var imageURL: String?
+    var bodyText: String?
 }
 
 /// Fetches OpenGraph and HTML meta tags from a URL to populate Item metadata.
@@ -38,7 +39,9 @@ final class URLMetadataFetcher: Sendable {
                 return nil
             }
 
-            return parse(html: html)
+            var result = parse(html: html)
+            result.bodyText = extractBodyText(html: html)
+            return result
         } catch {
             return nil
         }
@@ -116,6 +119,58 @@ final class URLMetadataFetcher: Sendable {
             if !cleaned.isEmpty { return cleaned }
         }
         return nil
+    }
+
+    /// Extract readable body text from HTML, stripping tags and boilerplate.
+    private func extractBodyText(html: String) -> String? {
+        var text = html
+
+        // Remove script and style blocks
+        let blockPatterns = [
+            "<script[^>]*>[\\s\\S]*?</script>",
+            "<style[^>]*>[\\s\\S]*?</style>",
+            "<nav[^>]*>[\\s\\S]*?</nav>",
+            "<footer[^>]*>[\\s\\S]*?</footer>",
+            "<header[^>]*>[\\s\\S]*?</header>",
+            "<!--[\\s\\S]*?-->",
+        ]
+        for pattern in blockPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                text = regex.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: " ")
+            }
+        }
+
+        // Try to find <article> or <main> content first
+        let contentPatterns = [
+            "<article[^>]*>([\\s\\S]*?)</article>",
+            "<main[^>]*>([\\s\\S]*?)</main>",
+            "<div[^>]*class=\"[^\"]*(?:article|post|entry|content)[^\"]*\"[^>]*>([\\s\\S]*?)</div>",
+        ]
+        var bodyContent: String?
+        for pattern in contentPatterns {
+            if let match = firstMatch(html: text, pattern: pattern) {
+                bodyContent = match
+                break
+            }
+        }
+
+        let source = bodyContent ?? text
+
+        // Strip all remaining HTML tags
+        var stripped = source
+        if let tagRegex = try? NSRegularExpression(pattern: "<[^>]+>", options: []) {
+            stripped = tagRegex.stringByReplacingMatches(in: stripped, range: NSRange(stripped.startIndex..., in: stripped), withTemplate: " ")
+        }
+
+        // Decode entities and normalize whitespace
+        stripped = stripped.decodingHTMLEntities()
+        let lines = stripped.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.count > 40 } // skip short nav/UI lines
+        let result = lines.joined(separator: "\n")
+
+        guard result.count > 100 else { return nil }
+        return String(result.prefix(5000))
     }
 
     /// Return the first capture group match for the given regex pattern

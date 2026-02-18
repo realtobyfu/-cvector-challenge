@@ -14,4 +14,6 @@ extension Notification.Name {
     static let groveToggleChat = Notification.Name("groveToggleChat")
     static let groveOpenConversation = Notification.Name("groveOpenConversation")
     static let groveStartCheckIn = Notification.Name("groveStartCheckIn")
+    static let groveEnterFocusMode = Notification.Name("groveEnterFocusMode")
+    static let groveExitFocusMode = Notification.Name("groveExitFocusMode")
 }

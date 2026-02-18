@@ -100,25 +100,30 @@ struct InboxTriageView: View {
 
     private var embeddedInboxList: some View {
         let visibleItems = Array(inboxItems.prefix(8))
-        return LazyVStack(spacing: 8) {
-            ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
-                InboxCard(
-                    item: item,
-                    isSelected: index == focusedIndex,
-                    onKeep: { keepItem(item) },
-                    onLater: { /* no-op — stays in inbox */ },
-                    onDrop: { dropItem(item) },
-                    onConfirmTag: { tag in confirmTag(tag) },
-                    onDismissTag: { tag in dismissTag(tag, from: item) }
-                )
-                .id(item.id)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                    removal: .opacity.combined(with: .move(edge: .trailing))
-                ))
-                .onTapGesture {
-                    focusedIndex = index
-                    selectedItem = item
+        return VStack(spacing: 8) {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 12)],
+                spacing: 12
+            ) {
+                ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
+                    InboxCard(
+                        item: item,
+                        isSelected: index == focusedIndex,
+                        onKeep: { keepItem(item) },
+                        onLater: { /* no-op — stays in inbox */ },
+                        onDrop: { dropItem(item) },
+                        onConfirmTag: { tag in confirmTag(tag) },
+                        onDismissTag: { tag in dismissTag(tag, from: item) }
+                    )
+                    .id(item.id)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                        removal: .opacity.combined(with: .move(edge: .trailing))
+                    ))
+                    .onTapGesture {
+                        focusedIndex = index
+                        selectedItem = item
+                    }
                 }
             }
 

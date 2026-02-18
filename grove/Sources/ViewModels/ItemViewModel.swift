@@ -91,6 +91,10 @@ final class ItemViewModel {
                 }
                 if let imageURLString = metadata.imageURL {
                     fetchedItem.metadata["thumbnailURL"] = imageURLString
+                    // Download and store cover image
+                    if let imageData = await ImageDownloadService.shared.downloadAndCompress(urlString: imageURLString) {
+                        fetchedItem.thumbnail = imageData
+                    }
                 }
                 fetchedItem.metadata["fetchingMetadata"] = nil
                 fetchedItem.updatedAt = .now
@@ -98,6 +102,17 @@ final class ItemViewModel {
 
                 // Auto-tag after metadata is available (better LLM input)
                 await self.autoTagItem(itemID: itemID, context: context)
+
+                // Generate LLM overview for articles
+                if itemType == .article {
+                    await self.generateOverview(
+                        itemID: itemID,
+                        context: context,
+                        title: metadata.title ?? trimmed,
+                        description: metadata.description,
+                        bodyText: metadata.bodyText
+                    )
+                }
             }
 
             return item
@@ -133,6 +148,56 @@ final class ItemViewModel {
 
         let service = AutoTagService()
         await service.tagItem(item, in: context)
+    }
+
+    // MARK: - Overview Generation
+
+    /// Generates a multi-paragraph overview/summary for an article using the LLM.
+    /// Stores the result in item.content, replacing the short OG description.
+    private func generateOverview(
+        itemID: UUID,
+        context: ModelContext,
+        title: String,
+        description: String?,
+        bodyText: String?
+    ) async {
+        guard LLMServiceConfig.isConfigured else { return }
+
+        // Need at least some text to summarize
+        let sourceText = bodyText ?? description ?? ""
+        guard sourceText.count > 50 else { return }
+
+        let systemPrompt = """
+        You are a knowledge-management assistant. Given an article's title and text, \
+        write a concise overview (2-3 short paragraphs) that captures the key ideas, \
+        arguments, and takeaways. Write in plain prose, no bullet points or headers. \
+        Return only the overview text, nothing else.
+        """
+
+        let userPrompt = """
+        Title: \(title)
+
+        Article text:
+        \(String(sourceText.prefix(4000)))
+        """
+
+        let provider = GroqProvider()
+        guard let result = await provider.complete(
+            system: systemPrompt,
+            user: userPrompt,
+            service: "overview"
+        ) else { return }
+
+        let overview = result.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !overview.isEmpty else { return }
+
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == itemID })
+        guard let item = try? context.fetch(descriptor).first else { return }
+
+        item.content = overview
+        item.metadata["hasLLMOverview"] = "true"
+        item.updatedAt = .now
+        try? context.save()
     }
 
     // MARK: - Connections

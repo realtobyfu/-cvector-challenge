@@ -32,21 +32,14 @@ struct ItemCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            // Video thumbnail
-            if item.type == .video, let thumbnailData = item.thumbnail,
-               let nsImage = NSImage(data: thumbnailData) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 100)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay(
-                        Image(systemName: "play.circle.fill")
-                            .font(.title)
-                            .foregroundStyle(Color.textInverse.opacity(0.9))
-                            .shadow(radius: 2)
-                    )
+            // Cover image (articles, videos, etc.)
+            if let thumbnailData = item.thumbnail {
+                CoverImageView(
+                    imageData: thumbnailData,
+                    height: 120,
+                    showPlayOverlay: item.type == .video,
+                    cornerRadius: 4
+                )
             }
 
             // Type icon and title

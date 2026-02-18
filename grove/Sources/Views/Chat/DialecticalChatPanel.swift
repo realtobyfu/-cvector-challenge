@@ -6,6 +6,7 @@ struct DialecticalChatPanel: View {
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
     @Binding var selectedConversation: Conversation?
     @Binding var isVisible: Bool
+    var currentBoard: Board?
     var onNavigateToItem: ((Item) -> Void)?
 
     @State private var dialecticsService = DialecticsService()
@@ -15,6 +16,8 @@ struct DialecticalChatPanel: View {
     @State private var connectionSourceIdx = 0
     @State private var connectionTargetIdx = 1
     @State private var connectionType: ConnectionType = .related
+    @State private var reflectionMessage: ChatMessage?
+    @State private var reflectionConversation: Conversation?
 
     private var activeConversation: Conversation? {
         selectedConversation
@@ -35,6 +38,9 @@ struct DialecticalChatPanel: View {
         .background(Color.bgInspector)
         .sheet(item: $connectionMessage) { message in
             connectionSheet(for: message)
+        }
+        .sheet(item: $reflectionMessage) { message in
+            reflectionSheet(for: message)
         }
     }
 
@@ -194,7 +200,8 @@ struct DialecticalChatPanel: View {
 
             if !message.referencedItemIDs.isEmpty {
                 Button {
-                    saveReflectionFromMessage(message, conversation: conversation)
+                    reflectionConversation = conversation
+                    reflectionMessage = message
                 } label: {
                     Label("Save as Reflection", systemImage: "text.badge.plus")
                         .font(.groveBadge)
@@ -484,10 +491,22 @@ struct DialecticalChatPanel: View {
     // MARK: - Actions
 
     private func startNewConversation() {
+        let seedItems: [Item]
+        if let board = currentBoard {
+            // Seed with up to 10 active items from the current board, sorted by depth score
+            seedItems = Array(
+                board.items
+                    .filter { $0.status == .active }
+                    .sorted { $0.depthScore > $1.depthScore }
+                    .prefix(10)
+            )
+        } else {
+            seedItems = []
+        }
         let conversation = dialecticsService.startConversation(
             trigger: .userInitiated,
-            seedItems: [],
-            board: nil,
+            seedItems: seedItems,
+            board: currentBoard,
             context: modelContext
         )
         selectedConversation = conversation
@@ -507,17 +526,14 @@ struct DialecticalChatPanel: View {
         }
     }
 
-    private func saveReflectionFromMessage(_ message: ChatMessage, conversation: Conversation) {
-        guard let firstID = message.referencedItemIDs.first else { return }
-        let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
-        guard let item = allItems.first(where: { $0.id == firstID }) else { return }
+    // MARK: - Reflection Sheet
 
-        _ = dialecticsService.saveAsReflection(
-            content: message.content,
-            itemTitle: item.title,
-            blockType: .keyInsight,
-            conversation: conversation,
-            context: modelContext
+    private func reflectionSheet(for message: ChatMessage) -> some View {
+        SaveReflectionSheet(
+            message: message,
+            conversation: reflectionConversation,
+            dialecticsService: dialecticsService,
+            onDismiss: { reflectionMessage = nil }
         )
     }
 
@@ -585,5 +601,159 @@ struct DialecticalChatPanel: View {
         }
         .padding(Spacing.xl)
         .frame(width: 350)
+    }
+}
+
+// MARK: - Save Reflection Sheet
+
+private struct SaveReflectionSheet: View {
+    let message: ChatMessage
+    let conversation: Conversation?
+    let dialecticsService: DialecticsService
+    let onDismiss: () -> Void
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var selectedItemID: UUID?
+    @State private var selectedBlockType: ReflectionBlockType = .keyInsight
+    @State private var editedContent: String = ""
+    @State private var saved = false
+
+    private var referencedItems: [Item] {
+        let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+        return message.referencedItemIDs.compactMap { id in
+            allItems.first(where: { $0.id == id })
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            Text("Save as Reflection")
+                .font(.groveItemTitle)
+                .foregroundStyle(Color.textPrimary)
+
+            // Target item picker
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("SAVE TO ITEM")
+                    .sectionHeaderStyle()
+
+                ForEach(referencedItems, id: \.id) { item in
+                    Button {
+                        selectedItemID = item.id
+                    } label: {
+                        HStack(spacing: Spacing.sm) {
+                            Image(systemName: selectedItemID == item.id ? "checkmark.circle.fill" : "circle")
+                                .font(.groveBody)
+                                .foregroundStyle(selectedItemID == item.id ? Color.textPrimary : Color.textMuted)
+                            Image(systemName: item.type.iconName)
+                                .font(.groveBadge)
+                                .foregroundStyle(Color.textSecondary)
+                            Text(item.title)
+                                .font(.groveBody)
+                                .foregroundStyle(Color.textPrimary)
+                                .lineLimit(1)
+                        }
+                        .padding(.vertical, Spacing.xs)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Block type picker
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("REFLECTION TYPE")
+                    .sectionHeaderStyle()
+
+                HStack(spacing: Spacing.sm) {
+                    ForEach(ReflectionBlockType.allCases, id: \.self) { type in
+                        Button {
+                            selectedBlockType = type
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: type.systemImage)
+                                    .font(.groveBadge)
+                                Text(type.displayName)
+                                    .font(.groveBadge)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(selectedBlockType == type ? Color.accentBadge : Color.bgCard)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(Color.borderPrimary, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(selectedBlockType == type ? Color.textPrimary : Color.textSecondary)
+                    }
+                }
+            }
+
+            // Content editor
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("CONTENT")
+                    .sectionHeaderStyle()
+
+                TextEditor(text: $editedContent)
+                    .font(.groveBody)
+                    .frame(minHeight: 100, maxHeight: 200)
+                    .padding(Spacing.xs)
+                    .background(Color.bgInput)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.borderInput, lineWidth: 1)
+                    )
+            }
+
+            // Actions
+            HStack {
+                Button("Cancel") {
+                    onDismiss()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                if saved {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .font(.groveBadge)
+                        .foregroundStyle(Color.textSecondary)
+                }
+
+                Button("Save Reflection") {
+                    saveReflection()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.accentSelection)
+                .disabled(selectedItemID == nil || editedContent.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(Spacing.xl)
+        .frame(width: 420)
+        .onAppear {
+            editedContent = message.content
+            selectedItemID = message.referencedItemIDs.first
+        }
+    }
+
+    private func saveReflection() {
+        guard let itemID = selectedItemID,
+              let item = referencedItems.first(where: { $0.id == itemID }),
+              let conv = conversation else { return }
+
+        _ = dialecticsService.saveAsReflection(
+            content: editedContent,
+            itemTitle: item.title,
+            blockType: selectedBlockType,
+            conversation: conv,
+            context: modelContext
+        )
+        saved = true
+        // Dismiss after a brief moment so the user sees the confirmation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            onDismiss()
+        }
     }
 }

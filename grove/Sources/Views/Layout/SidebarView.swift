@@ -46,7 +46,7 @@ struct SidebarView: View {
                         }
                     }
                 } icon: {
-                    Image(systemName: "house")
+                    Image(systemName: "envelope")
                 }
                 .tag(SidebarItem.home)
             }
@@ -55,11 +55,6 @@ struct SidebarView: View {
                 ForEach(boards) { board in
                     Label {
                         HStack(spacing: 6) {
-                            if let hex = board.color {
-                                Circle()
-                                    .fill(Color(hex: hex))
-                                    .frame(width: 8, height: 8)
-                            }
                             Text(board.title)
                             if board.isSmart {
                                 Image(systemName: "gearshape.2")
@@ -70,6 +65,7 @@ struct SidebarView: View {
                         }
                     } icon: {
                         Image(systemName: board.isSmart ? "sparkles.rectangle.stack" : (board.icon ?? "folder"))
+                            .foregroundStyle(board.color.map { Color(hex: $0) } ?? Color.textSecondary)
                     }
                     .tag(SidebarItem.board(board.id))
                     .contextMenu {
@@ -152,18 +148,14 @@ struct SidebarView: View {
                         Button {
                             NotificationCenter.default.post(name: .groveOpenConversation, object: conv)
                         } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(conv.title)
-                                        .font(.groveBody)
-                                        .foregroundStyle(Color.textPrimary)
-                                        .lineLimit(1)
-                                    Text(conv.updatedAt.formatted(date: .abbreviated, time: .omitted))
-                                        .font(.groveMeta)
-                                        .foregroundStyle(Color.textTertiary)
-                                }
-                            } icon: {
-                                Image(systemName: "bubble.left.and.bubble.right")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(conv.title)
+                                    .font(.groveBody)
+                                    .foregroundStyle(Color.textPrimary)
+                                    .lineLimit(1)
+                                Text(conv.updatedAt.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.groveMeta)
+                                    .foregroundStyle(Color.textTertiary)
                             }
                         }
                         .buttonStyle(.plain)

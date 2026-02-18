@@ -46,6 +46,7 @@ struct BoardDetailView: View {
     @State private var clusterSynthesisTitle: String = ""
     @State private var showClusterSynthesisSheet = false
     @State private var showLearningPathSheet = false
+    @State private var itemToDelete: Item?
 
     /// The effective items for this board — smart boards compute from tag rules, regular boards use direct membership
     private var effectiveItems: [Item] {
@@ -95,6 +96,11 @@ struct BoardDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Capture bar — auto-assigns to this board
+            if !board.isSmart {
+                CaptureBarView(currentBoardID: board.id)
+            }
+
             if effectiveItems.isEmpty {
                 emptyState
             } else {
@@ -176,6 +182,34 @@ struct BoardDetailView: View {
             )
         }
         .background(boardKeyboardHandlers)
+        .alert(
+            "Delete Item",
+            isPresented: Binding(
+                get: { itemToDelete != nil },
+                set: { if !$0 { itemToDelete = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                itemToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let item = itemToDelete {
+                    if selectedItem?.id == item.id {
+                        selectedItem = nil
+                    }
+                    if openedItem?.id == item.id {
+                        openedItem = nil
+                    }
+                    modelContext.delete(item)
+                    try? modelContext.save()
+                }
+                itemToDelete = nil
+            }
+        } message: {
+            if let item = itemToDelete {
+                Text("Are you sure you want to delete \"\(item.title)\"? This cannot be undone.")
+            }
+        }
     }
 
     // MARK: - Keyboard Handlers (J/K/Enter)
@@ -414,6 +448,7 @@ struct BoardDetailView: View {
                                 }
                                 .selectedItemStyle(selectedItem?.id == item.id)
                                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                .contextMenu { itemContextMenu(for: item) }
                         }
                     }
                     .animation(.easeInOut(duration: 0.2), value: sortedItems.map(\.id))
@@ -432,6 +467,7 @@ struct BoardDetailView: View {
                                 }
                                 .selectedItemStyle(selectedItem?.id == item.id)
                                 .transition(.opacity.combined(with: .slide))
+                                .contextMenu { itemContextMenu(for: item) }
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -606,6 +642,35 @@ struct BoardDetailView: View {
             handled = true
         }
         return handled
+    }
+
+    // MARK: - Item Context Menu
+
+    @ViewBuilder
+    private func itemContextMenu(for item: Item) -> some View {
+        Button {
+            openedItem = item
+            selectedItem = item
+        } label: {
+            Label("Open", systemImage: "doc.text")
+        }
+
+        Divider()
+
+        if !board.isSmart {
+            Button {
+                let viewModel = ItemViewModel(modelContext: modelContext)
+                viewModel.removeFromBoard(item, board: board)
+            } label: {
+                Label("Remove from Board", systemImage: "folder.badge.minus")
+            }
+        }
+
+        Button(role: .destructive) {
+            itemToDelete = item
+        } label: {
+            Label("Delete Item", systemImage: "trash")
+        }
     }
 
     // MARK: - Clustering

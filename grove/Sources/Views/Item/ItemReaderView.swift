@@ -24,10 +24,17 @@ struct ItemReaderView: View {
     // Delete confirmation
     @State private var blockToDelete: ReflectionBlock?
     @State private var showDeleteConfirmation = false
+    // New reflection editor sheet
+    @State private var showReflectionEditor = false
+    @State private var editorBlockType: ReflectionBlockType = .keyInsight
+    @State private var editorContent = ""
+    @State private var editorHighlight: String?
     // AI reflection prompts
     @State private var aiPrompts: [ReflectionPrompt] = []
     @State private var isLoadingPrompts = false
     @State private var dismissedPromptIDs: Set<UUID> = []
+    // Inline new-reflection editor focus
+    @FocusState private var isNewReflectionFocused: Bool
 
     private var sortedReflections: [ReflectionBlock] {
         item.reflections.sorted { $0.position < $1.position }
@@ -39,19 +46,68 @@ struct ItemReaderView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    itemHeader
-                    Divider().padding(.horizontal)
-                    sourceContent
-                        .padding()
-                    Divider().padding(.horizontal)
-                    reflectionsSection
-                        .padding()
+            if showReflectionEditor {
+                // Split mode: source left, editor right
+                HStack(spacing: 0) {
+                    // Left: source content (60%)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            itemHeader
+
+                            if let thumbnailData = item.thumbnail {
+                                CoverImageView(
+                                    imageData: thumbnailData,
+                                    height: 200,
+                                    showPlayOverlay: false,
+                                    cornerRadius: 0
+                                )
+                                .padding(.horizontal)
+                            }
+
+                            Divider().padding(.horizontal)
+                            sourceContent
+                                .padding()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.bgPrimary)
+
+                    Divider()
+
+                    // Right: editor panel (40%, min 320)
+                    reflectionEditorPanel
+                        .frame(minWidth: 320, idealWidth: 380)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.bgPrimary)
+                        .transition(.move(edge: .trailing))
                 }
+            } else {
+                // Normal mode: full-width reader
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        itemHeader
+
+                        if let thumbnailData = item.thumbnail {
+                            CoverImageView(
+                                imageData: thumbnailData,
+                                height: 200,
+                                showPlayOverlay: false,
+                                cornerRadius: 0
+                            )
+                            .padding(.horizontal)
+                        }
+
+                        Divider().padding(.horizontal)
+                        sourceContent
+                            .padding()
+                        Divider().padding(.horizontal)
+                        reflectionsSection
+                            .padding()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color.bgPrimary)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color.bgPrimary)
 
             // Connection suggestion popover
             if showSuggestions && !connectionSuggestions.isEmpty {
@@ -79,12 +135,16 @@ struct ItemReaderView: View {
                 triggerSuggestions()
             }
             loadAIPrompts()
+            backfillThumbnailIfNeeded()
         }
         .onChange(of: item.id) {
             showSuggestions = false
             connectionSuggestions = []
             editingBlockID = nil
             selectedHighlightText = nil
+            showReflectionEditor = false
+            editorContent = ""
+            editorHighlight = nil
             aiPrompts = []
             dismissedPromptIDs = []
             isLoadingPrompts = false
@@ -322,7 +382,8 @@ struct ItemReaderView: View {
             HStack {
                 Spacer()
                 Button {
-                    createBlockFromHighlight(highlight)
+                    openReflectionEditor(type: .keyInsight, content: "", highlight: highlight)
+                    selectedHighlightText = nil
                 } label: {
                     Label("Reflect on Selection", systemImage: "text.quote")
                         .font(.groveBodySecondary)
@@ -379,6 +440,23 @@ struct ItemReaderView: View {
                     .clipShape(Capsule())
 
                 Spacer()
+
+                Menu {
+                    ForEach(ReflectionBlockType.allCases, id: \.self) { type in
+                        Button {
+                            openReflectionEditor(type: type, content: "", highlight: nil)
+                        } label: {
+                            Label(type.displayName, systemImage: type.systemImage)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 22)
+                .help("Add reflection")
             }
 
             Divider()
@@ -431,17 +509,20 @@ struct ItemReaderView: View {
     // MARK: - Ghost Prompts
 
     private var ghostPrompts: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ghostPromptRow(
-                text: "What is the key claim here?",
+        HStack(spacing: 8) {
+            ghostPromptChip(
+                label: "Key claim?",
+                icon: ReflectionBlockType.keyInsight.systemImage,
                 blockType: .keyInsight
             )
-            ghostPromptRow(
-                text: "How does this connect to what you know?",
+            ghostPromptChip(
+                label: "Connections?",
+                icon: ReflectionBlockType.connection.systemImage,
                 blockType: .connection
             )
-            ghostPromptRow(
-                text: "What would you challenge?",
+            ghostPromptChip(
+                label: "Challenge?",
+                icon: ReflectionBlockType.disagreement.systemImage,
                 blockType: .disagreement
             )
         }
@@ -487,33 +568,34 @@ struct ItemReaderView: View {
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    createBlock(type: prompt.suggestedBlockType, content: prompt.text, highlight: nil)
+                    openReflectionEditor(type: prompt.suggestedBlockType, content: prompt.text, highlight: nil)
                     _ = dismissedPromptIDs.insert(prompt.id)
                 }
             }
         }
     }
 
-    private func ghostPromptRow(text: String, blockType: ReflectionBlockType) -> some View {
+    private func ghostPromptChip(label: String, icon: String, blockType: ReflectionBlockType) -> some View {
         Button {
-            createBlock(type: blockType, content: "", highlight: nil)
+            openReflectionEditor(type: blockType, content: "", highlight: nil)
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: blockType.systemImage)
+            HStack(spacing: 5) {
+                Image(systemName: icon)
                     .font(.groveMeta)
-                    .foregroundStyle(Color.textTertiary)
-                    .frame(width: 16)
-                Text(text)
-                    .font(.groveGhostText)
-                    .foregroundStyle(Color.textTertiary)
-                Spacer()
+                Text(label)
+                    .font(.groveBodySecondary)
             }
-            .padding(12)
+            .foregroundStyle(Color.textTertiary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(Color.bgCard)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.borderPrimary, lineWidth: 1)
+                    .strokeBorder(
+                        Color.borderTagDashed,
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -525,9 +607,6 @@ struct ItemReaderView: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header: type label + video timestamp + actions
             HStack(spacing: 6) {
-                Image(systemName: block.blockType.systemImage)
-                    .font(.caption2)
-                    .foregroundStyle(Color.textSecondary)
                 Text(block.blockType.displayName)
                     .font(.groveBadge)
                     .tracking(0.5)
@@ -557,37 +636,46 @@ struct ItemReaderView: View {
                     .font(.groveMeta)
                     .foregroundStyle(Color.textTertiary)
 
+                // Inline action buttons
                 Menu {
-                    Menu("Change Type") {
-                        ForEach(ReflectionBlockType.allCases, id: \.self) { type in
-                            Button {
-                                block.blockType = type
-                                try? modelContext.save()
-                            } label: {
-                                Label(type.displayName, systemImage: type.systemImage)
-                            }
+                    ForEach(ReflectionBlockType.allCases, id: \.self) { type in
+                        Button {
+                            block.blockType = type
+                            try? modelContext.save()
+                        } label: {
+                            Label(type.displayName, systemImage: type.systemImage)
                         }
                     }
-                    Button {
-                        editingBlockID = block.id
-                        editBlockContent = block.content
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        blockToDelete = block
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: block.blockType.systemImage)
                         .font(.groveMeta)
                         .foregroundStyle(Color.textSecondary)
                 }
                 .menuStyle(.borderlessButton)
                 .frame(width: 20)
+                .help("Change type")
+
+                Button {
+                    editingBlockID = block.id
+                    editBlockContent = block.content
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Edit")
+
+                Button {
+                    blockToDelete = block
+                    showDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Delete")
             }
 
             // Highlight (linked source text)
@@ -647,6 +735,121 @@ struct ItemReaderView: View {
         )
     }
 
+    // MARK: - Reflection Editor Panel (split-pane right side)
+
+    private var reflectionEditorPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header bar
+            HStack {
+                Text("REFLECT")
+                    .sectionHeaderStyle()
+                Spacer()
+                Button { cancelReflectionEditor() } label: {
+                    Image(systemName: "xmark")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, Spacing.lg)
+            .padding(.top, Spacing.lg)
+            .padding(.bottom, Spacing.sm)
+
+            Divider()
+
+            // Type selector row
+            HStack(spacing: 6) {
+                Text(editorBlockType.displayName)
+                    .font(.groveBadge)
+                    .tracking(0.5)
+                    .foregroundStyle(Color.textSecondary)
+                Menu {
+                    ForEach(ReflectionBlockType.allCases, id: \.self) { type in
+                        Button {
+                            editorBlockType = type
+                        } label: {
+                            Label(type.displayName, systemImage: type.systemImage)
+                        }
+                    }
+                } label: {
+                    Image(systemName: editorBlockType.systemImage)
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 20)
+                Spacer()
+            }
+            .padding(.horizontal, Spacing.lg)
+            .padding(.vertical, Spacing.sm)
+
+            // Highlight preview (if reflecting on selection)
+            if let highlight = editorHighlight, !highlight.isEmpty {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(Color.textPrimary)
+                        .frame(width: 2)
+                    Text(highlight)
+                        .font(.groveGhostText)
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(3)
+                        .padding(.leading, 8)
+                        .padding(.vertical, 4)
+                }
+                .padding(.leading, Spacing.lg)
+                .padding(.trailing, Spacing.lg)
+                .padding(.bottom, Spacing.sm)
+            }
+
+            Divider()
+
+            // Editor — fills remaining space
+            RichMarkdownEditor(text: $editorContent, sourceItem: item, minHeight: 120)
+                .focused($isNewReflectionFocused)
+                .padding(Spacing.lg)
+
+            Spacer()
+
+            // Footer: Cancel / Save
+            Divider()
+            HStack {
+                Spacer()
+                Button("Cancel") { cancelReflectionEditor() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Button("Save") { saveNewReflection() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(Color.textPrimary)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(editorContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, Spacing.lg)
+            .padding(.vertical, Spacing.md)
+        }
+    }
+
+    private func cancelReflectionEditor() {
+        withAnimation(.easeOut(duration: 0.25)) {
+            showReflectionEditor = false
+        }
+        editorContent = ""
+        editorHighlight = nil
+        NotificationCenter.default.post(name: .groveExitFocusMode, object: nil)
+    }
+
+    private func saveNewReflection() {
+        let trimmed = editorContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        commitNewBlock(type: editorBlockType, content: trimmed, highlight: editorHighlight)
+        withAnimation(.easeOut(duration: 0.25)) {
+            showReflectionEditor = false
+        }
+        editorContent = ""
+        editorHighlight = nil
+        NotificationCenter.default.post(name: .groveExitFocusMode, object: nil)
+    }
+
     // MARK: - Block Editor
 
     private func editBlockEditor(_ block: ReflectionBlock) -> some View {
@@ -680,7 +883,20 @@ struct ItemReaderView: View {
 
     // MARK: - Block CRUD
 
-    private func createBlock(type: ReflectionBlockType, content: String, highlight: String?) {
+    private func openReflectionEditor(type: ReflectionBlockType, content: String, highlight: String?) {
+        editorBlockType = type
+        editorContent = content
+        editorHighlight = highlight
+        withAnimation(.easeOut(duration: 0.25)) {
+            showReflectionEditor = true
+        }
+        NotificationCenter.default.post(name: .groveEnterFocusMode, object: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isNewReflectionFocused = true
+        }
+    }
+
+    private func commitNewBlock(type: ReflectionBlockType, content: String, highlight: String?) {
         let nextPosition = (sortedReflections.last?.position ?? -1) + 1
         let timestamp: Int? = isVideoItem ? Int(videoCurrentTime) : nil
         let block = ReflectionBlock(
@@ -695,14 +911,6 @@ struct ItemReaderView: View {
         item.reflections.append(block)
         item.updatedAt = .now
         try? modelContext.save()
-
-        editingBlockID = block.id
-        editBlockContent = content
-    }
-
-    private func createBlockFromHighlight(_ highlight: String) {
-        createBlock(type: .keyInsight, content: "", highlight: highlight)
-        selectedHighlightText = nil
     }
 
     private func saveEditedBlock(_ block: ReflectionBlock) {
@@ -737,6 +945,21 @@ struct ItemReaderView: View {
                 withAnimation(.easeOut(duration: 0.2)) {
                     aiPrompts = prompts
                 }
+            }
+        }
+    }
+
+    // MARK: - Thumbnail Backfill
+
+    /// Downloads cover image for existing items that have a thumbnailURL but no stored thumbnail.
+    private func backfillThumbnailIfNeeded() {
+        guard item.thumbnail == nil,
+              let thumbnailURL = item.metadata["thumbnailURL"],
+              !thumbnailURL.isEmpty else { return }
+        Task {
+            if let imageData = await ImageDownloadService.shared.downloadAndCompress(urlString: thumbnailURL) {
+                item.thumbnail = imageData
+                try? modelContext.save()
             }
         }
     }

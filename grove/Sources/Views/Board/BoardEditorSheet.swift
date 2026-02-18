@@ -287,6 +287,7 @@ struct BoardEditorSheet: View {
                 } label: {
                     Image(systemName: icon)
                         .font(.system(size: 16))
+                        .foregroundStyle(Color(hex: selectedColorHex))
                         .frame(width: 32, height: 32)
                         .background(
                             selectedIcon == icon

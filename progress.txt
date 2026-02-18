@@ -325,3 +325,70 @@ Started: Tue Feb 17 12:22:39 HST 2026
 5. Reset button clears usage data — `resetAll()` clears entries and legacy `LLMServiceConfig` counters.
 6. Monthly budget limit — when `budgetEnabled`, `GroqProvider` checks `isBudgetExceeded` before every API call and returns nil. User notified via warning banner in settings.
 7. Build passes with zero errors.
+
+## Dialectical Chat — Stories A-D
+**Status:** PASS
+**Date:** 2026-02-17
+
+### Story A: Data Model + Multi-Turn LLM
+
+**Files created:**
+- `grove/Sources/Models/Conversation.swift` — `ConversationTrigger` enum (userInitiated, contradictionDetected, knowledgeGap, staleItems, periodicReflection). `@Model final class Conversation` with fields: id, title, trigger, createdAt, updatedAt, isArchived, board (Board? relationship), messages (cascade-delete relationship to ChatMessage), createdReflections (inverse relationship to ReflectionBlock), seedItemIDs ([UUID]). Computed properties: sortedMessages, visibleMessages, lastMessage, nextPosition.
+- `grove/Sources/Models/ChatMessage.swift` — `ChatRole` enum (system, assistant, user, tool). `@Model final class ChatMessage` with fields: id, conversation (Conversation? relationship), role, content, position, createdAt, referencedItemIDs ([UUID]), toolCallName (String?), isHidden (Bool). Hidden messages used for system prompts and tool call/result pairs.
+- `grove/Sources/Services/KnowledgeBaseTools.swift` — Local tool fulfillment for agentic loop. 6 tools: search_items (keyword search), get_item_detail (full item info), get_reflections (item's reflection blocks), get_connections (item's connections both directions), search_by_tag (items sharing a tag), get_board_items (items in a board). Static `toolDescriptions` string injected into system prompt. `fulfill(toolName:args:)` dispatcher.
+- `grove/Sources/Services/DialecticsService.swift` — `DialecticsServiceProtocol` and `@MainActor @Observable` implementation. Core orchestrator for dialectical conversations. `startConversation()` creates Conversation with system prompt + seed item context. `sendMessage()` runs agentic loop (max 3 tool-call rounds), saves messages, auto-titles after first exchange. `generateTitle()` LLM-generated 3-6 word title. `buildTurns()` assembles ChatTurn array with context summarization for conversations >20 messages. `parseToolCall()` extracts `{"tool_call": {...}}` JSON from LLM response. `extractReferencedItemIDs()` parses `[[wiki-links]]` from content. `saveAsReflection()` and `createConnection()` action methods. System prompt blends Socratic questioning with Hegelian dialectics.
+
+**Files modified:**
+- `grove/Sources/Services/LLM/LLMProvider.swift` — Added `ChatTurn` struct (role, content). Added `completeChat(messages:service:)` protocol method with default nil implementation.
+- `grove/Sources/Services/LLM/GroqProvider.swift` — Added `completeChat(messages:service:)` implementation with higher temperature (0.5), max_tokens (4000), timeout (60s). Reuses existing retry logic, budget checking, and token tracking.
+- `grove/Sources/Models/ReflectionBlock.swift` — Added `conversation: Conversation?` property for tracking which conversation created a reflection.
+- `grove/Sources/App/GroveApp.swift` — Registered `Conversation.self` and `ChatMessage.self` in SwiftData schema.
+- `grove/Sources/Utilities/Notifications.swift` — Added `.groveToggleChat` and `.groveOpenConversation` notification names.
+
+### Story B: Chat UI
+
+**Files created:**
+- `grove/Sources/Views/Chat/DialecticalChatPanel.swift` — Full chat panel UI (380px width, bgInspector background). Header with title, archive button, conversation list popover, new conversation button. Message bubbles: user (right-aligned, accentSelection bg, textInverse) and assistant (left-aligned, bgCard bg, 2px accentSelection left border). Wiki-link text parsing and AttributedString rendering. Thinking indicator with ProgressView. Input area with auto-expanding TextField and send button. Seed item pills showing conversation context. Empty state with recent conversations list. All styled per DESIGN.md tokens.
+
+**Files modified:**
+- `grove/Sources/Views/Layout/ContentView.swift` — Added `showChatPanel` and `selectedConversation` state. Extracted body into `detailZStack`, `mainContentArea`, `searchOverlay`, `captureOverlay`, `rightPanel` computed properties to fix type-checker complexity. `rightPanel` shows chat panel OR inspector (chat takes priority). Added chat toolbar button with filled/unfilled bubble icon. Created `ContentViewEventHandlers` and `ContentViewNotificationHandlers` ViewModifier structs.
+- `grove/Sources/Views/Layout/SidebarView.swift` — Added `@Query` for conversations sorted by updatedAt. Added "Conversations" section between Courses and Tags/Graph with clickable conversation rows (up to 3 non-archived).
+- `grove/Sources/App/GroveApp.swift` — Added "Toggle Dialectical Chat" menu command with `⌘⇧D` shortcut.
+
+### Story C: Agentic Tool Use + Actions
+
+**Features implemented:**
+- Agentic tool-call loop (max 3 rounds per turn) in DialecticsService — parse tool calls → fulfill via KnowledgeBaseTools → re-call LLM
+- Wiki-link text rendering with `[[Item Title]]` parsing and AttributedString highlighting
+- "Copy" action button on all assistant messages
+- "Save as Reflection" action button when assistant message references items
+- "Create Connection" action button when 2+ items referenced, with connection type picker sheet
+- Context window summarization for conversations >20 messages (keeps last 10 verbatim, summarizes older)
+
+### Story D: Active Check-Ins
+
+**Files created:**
+- `grove/Sources/Services/CheckInTriggerService.swift` — `CheckInTriggerServiceProtocol` and `CheckInTriggerService` implementation. Evaluates 4 trigger types in priority order:
+  1. **Contradiction detected** — finds `.contradicts` connections between items, generates opening prompt exploring the tension
+  2. **Knowledge gap** — boards with 5+ items but <25% reflected, seeds with highest-depth unreflected items
+  3. **Stale items** — items at sapling+ stage (30+ depth score) not engaged in 30+ days
+  4. **Periodic reflection** — weekly check-in on most active board (tracked via UserDefaults timestamp)
+  Each returns a `CheckInSuggestion` with trigger, seedItems, board, message, and auto-generated opening prompt.
+
+**Files modified:**
+- `grove/Sources/Models/Nudge.swift` — Added `NudgeType.dialecticalCheckIn` case.
+- `grove/Sources/Services/NudgeEngine.swift` — Added `CheckInTriggerServiceProtocol` dependency (injectable, defaults to `CheckInTriggerService()`). Added `generateCheckInOnLaunch()` called from `startSchedule()`. Checks LLM config, pending/shown status, 7-day dismissal cooldown. Stores trigger type and opening prompt encoded in nudge message (delimited by `|||`).
+- `grove/Sources/Views/Nudge/NudgeBarView.swift` — Added `dialecticalCheckIn` to icon/actionLabel switch cases ("bubble.left.and.bubble.right" / "Chat"). Added `Nudge` extension with `displayMessage` (extracts user-facing portion), `checkInTrigger`, `checkInOpeningPrompt`. Action posts `.groveStartCheckIn` notification.
+- `grove/Sources/Utilities/Notifications.swift` — Added `.groveStartCheckIn` notification name.
+- `grove/Sources/Views/Layout/ContentView.swift` — Added `.onReceive` handler for `.groveStartCheckIn`. `startCheckInConversation(from:)` creates a new conversation via DialecticsService with the nudge's seed items and trigger, adds the auto-generated opening prompt as the first assistant message, then opens the chat panel.
+
+**Acceptance criteria:** All met.
+1. CheckInTriggerService evaluates 4 trigger types on app launch via NudgeEngine integration.
+2. Contradiction trigger finds `.contradicts` connections and generates contextual opening prompt.
+3. Knowledge gap trigger identifies boards with low reflection ratios and seeds with highest-depth unreflected items.
+4. Stale items trigger finds high-value items not engaged in 30+ days.
+5. Periodic reflection trigger fires weekly on most active board (tracked via UserDefaults).
+6. NudgeType.dialecticalCheckIn integrated into NudgeEngine with LLM config check, pending/shown dedup, and 7-day dismissal cooldown.
+7. NudgeBarView displays check-in nudges with "Chat" action button that opens the dialectical chat panel.
+8. Nudge-to-conversation flow creates a pre-seeded conversation with auto-generated opening message.
+9. Build passes with zero errors.

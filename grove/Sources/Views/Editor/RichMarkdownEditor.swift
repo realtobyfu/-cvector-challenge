@@ -258,7 +258,7 @@ struct MarkdownNSTextView: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
 
         // Set default font
-        let defaultFont = NSFont(name: "IBMPlexSans-Regular", size: 13) ?? NSFont.systemFont(ofSize: 13)
+        let defaultFont = NSFont(name: "IBMPlexSans-Regular", size: 15) ?? NSFont.systemFont(ofSize: 15)
         textView.font = defaultFont
         textView.typingAttributes = [
             .font: defaultFont,
@@ -344,9 +344,9 @@ struct MarkdownNSTextView: NSViewRepresentable {
             let fullRange = NSRange(location: 0, length: storage.length)
             let text = storage.string
 
-            let defaultFont = NSFont(name: "IBMPlexSans-Regular", size: 13) ?? NSFont.systemFont(ofSize: 13)
-            let monoFont = NSFont(name: "IBMPlexMono-Regular", size: 12) ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-            let boldFont = NSFont(name: "IBMPlexSans-Medium", size: 13) ?? NSFont.boldSystemFont(ofSize: 13)
+            let defaultFont = NSFont(name: "IBMPlexSans-Regular", size: 15) ?? NSFont.systemFont(ofSize: 15)
+            let monoFont = NSFont(name: "IBMPlexMono-Regular", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+            let boldFont = NSFont(name: "IBMPlexSans-Medium", size: 15) ?? NSFont.boldSystemFont(ofSize: 15)
             let headingFont = NSFont(name: "Newsreader-Medium", size: 18) ?? NSFont.systemFont(ofSize: 18, weight: .medium)
             let headingSmallFont = NSFont(name: "Newsreader-Medium", size: 15) ?? NSFont.systemFont(ofSize: 15, weight: .medium)
 

@@ -16,6 +16,16 @@ struct InboxCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
+            // Cover image
+            if let thumbnailData = item.thumbnail {
+                CoverImageView(
+                    imageData: thumbnailData,
+                    height: 140,
+                    showPlayOverlay: item.type == .video,
+                    cornerRadius: 6
+                )
+            }
+
             // Header row: type icon + title
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: item.type.iconName)

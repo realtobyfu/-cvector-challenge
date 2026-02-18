@@ -24,6 +24,10 @@ struct ContentView: View {
     @State private var showItemExportSheet = false
     @State private var showChatPanel = false
     @State private var selectedConversation: Conversation?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var savedColumnVisibility: NavigationSplitViewVisibility?
+    @State private var savedInspectorOverride: Bool?
+    @State private var savedChatPanel: Bool?
 
     private var isInspectorVisible: Bool {
         if let override = inspectorUserOverride {
@@ -51,7 +55,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(selection: $selection)
         } detail: {
             detailZStack
@@ -70,6 +74,10 @@ struct ContentView: View {
             selectedConversation: $selectedConversation,
             inspectorUserOverride: $inspectorUserOverride,
             nudgeEngine: $nudgeEngine,
+            columnVisibility: $columnVisibility,
+            savedColumnVisibility: $savedColumnVisibility,
+            savedInspectorOverride: $savedInspectorOverride,
+            savedChatPanel: $savedChatPanel,
             isInspectorVisible: isInspectorVisible,
             searchScopeBoard: searchScopeBoard,
             boards: boards,
@@ -201,6 +209,7 @@ struct ContentView: View {
             DialecticalChatPanel(
                 selectedConversation: $selectedConversation,
                 isVisible: $showChatPanel,
+                currentBoard: searchScopeBoard,
                 onNavigateToItem: { item in
                     selectedItem = item
                     openedItem = item
@@ -576,69 +585,51 @@ struct InspectorPanelView: View {
         viewModel.deleteConnection(connection)
     }
 
-    // MARK: - Resurfacing Section
+    // MARK: - Review Section
 
     private var resurfacingSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("Resurfacing")
+            Text("Review")
                 .sectionHeaderStyle()
                 .padding(.horizontal)
 
             if item.isResurfacingEligible {
-                Toggle(isOn: Binding(
-                    get: { !item.isResurfacingPaused },
-                    set: { item.isResurfacingPaused = !$0 }
-                )) {
-                    Text("Active in resurfacing queue")
-                        .font(.groveBodySmall)
+                Button {
+                    item.isResurfacingPaused.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: item.isResurfacingPaused ? "circle" : "checkmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(item.isResurfacingPaused ? Color.textTertiary : Color.textPrimary)
+                        Text("Remind me to revisit")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(item.isResurfacingPaused ? Color.textSecondary : Color.textPrimary)
+                    }
                 }
-                .toggleStyle(.switch)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .padding(.horizontal)
 
                 if !item.isResurfacingPaused {
-                    VStack(alignment: .leading, spacing: 4) {
+                    if let nextDate = item.nextResurfaceDate {
                         HStack(spacing: 4) {
-                            Image(systemName: "clock")
+                            Image(systemName: item.isResurfacingOverdue ? "exclamationmark.circle" : "calendar.badge.clock")
                                 .font(.groveBadge)
-                                .foregroundStyle(Color.textSecondary)
-                            Text("Interval: \(item.resurfaceIntervalDays) days")
+                                .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
+                            Text(item.isResurfacingOverdue ? "Due for review" : "Next review: \(nextDate.formatted(date: .abbreviated, time: .omitted))")
                                 .font(.groveMeta)
-                                .foregroundStyle(Color.textSecondary)
+                                .fontWeight(item.isResurfacingOverdue ? .semibold : .regular)
+                                .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
                         }
-
-                        if let nextDate = item.nextResurfaceDate {
-                            HStack(spacing: 4) {
-                                Image(systemName: item.isResurfacingOverdue ? "exclamationmark.circle" : "calendar.badge.clock")
-                                    .font(.groveBadge)
-                                    .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
-                                Text(item.isResurfacingOverdue ? "Overdue" : "Next: \(nextDate.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(.groveMeta)
-                                    .fontWeight(item.isResurfacingOverdue ? .semibold : .regular)
-                                    .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
-                            }
-                        }
-
-                        if item.resurfaceCount > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.groveBadge)
-                                    .foregroundStyle(Color.textSecondary)
-                                Text("Resurfaced \(item.resurfaceCount) time\(item.resurfaceCount == 1 ? "" : "s")")
-                                    .font(.groveMeta)
-                                    .foregroundStyle(Color.textSecondary)
-                            }
-                        }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                 } else {
-                    Text("Resurfacing paused for this item.")
+                    Text("Revisit reminders paused.")
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textTertiary)
                         .padding(.horizontal)
                 }
             } else {
-                Text("Add annotations or connections to enable resurfacing.")
+                Text("Add notes or connections to enable review reminders.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textTertiary)
                     .padding(.horizontal)
@@ -754,6 +745,10 @@ struct ContentViewEventHandlers: ViewModifier {
     @Binding var selectedConversation: Conversation?
     @Binding var inspectorUserOverride: Bool?
     @Binding var nudgeEngine: NudgeEngine?
+    @Binding var columnVisibility: NavigationSplitViewVisibility
+    @Binding var savedColumnVisibility: NavigationSplitViewVisibility?
+    @Binding var savedInspectorOverride: Bool?
+    @Binding var savedChatPanel: Bool?
     let isInspectorVisible: Bool
     let searchScopeBoard: Board?
     let boards: [Board]
@@ -793,6 +788,10 @@ struct ContentViewEventHandlers: ViewModifier {
                 selection: $selection,
                 selectedItem: $selectedItem,
                 nudgeEngine: $nudgeEngine,
+                columnVisibility: $columnVisibility,
+                savedColumnVisibility: $savedColumnVisibility,
+                savedInspectorOverride: $savedInspectorOverride,
+                savedChatPanel: $savedChatPanel,
                 isInspectorVisible: isInspectorVisible,
                 searchScopeBoard: searchScopeBoard,
                 boards: boards,
@@ -813,6 +812,10 @@ struct ContentViewNotificationHandlers: ViewModifier {
     @Binding var selection: SidebarItem?
     @Binding var selectedItem: Item?
     @Binding var nudgeEngine: NudgeEngine?
+    @Binding var columnVisibility: NavigationSplitViewVisibility
+    @Binding var savedColumnVisibility: NavigationSplitViewVisibility?
+    @Binding var savedInspectorOverride: Bool?
+    @Binding var savedChatPanel: Bool?
     let isInspectorVisible: Bool
     let searchScopeBoard: Board?
     let boards: [Board]
@@ -864,6 +867,26 @@ struct ContentViewNotificationHandlers: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .groveStartCheckIn)) { notification in
                 guard let nudge = notification.object as? Nudge else { return }
                 startCheckInConversation(from: nudge)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveEnterFocusMode)) { _ in
+                savedColumnVisibility = columnVisibility
+                savedInspectorOverride = inspectorUserOverride
+                savedChatPanel = showChatPanel
+                withAnimation(.easeOut(duration: 0.25)) {
+                    columnVisibility = .detailOnly
+                    inspectorUserOverride = false
+                    showChatPanel = false
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveExitFocusMode)) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    columnVisibility = savedColumnVisibility ?? .automatic
+                    inspectorUserOverride = savedInspectorOverride
+                    showChatPanel = savedChatPanel ?? false
+                }
+                savedColumnVisibility = nil
+                savedInspectorOverride = nil
+                savedChatPanel = nil
             }
             .sheet(isPresented: $showBoardExportSheet) {
                 if let board = searchScopeBoard {
