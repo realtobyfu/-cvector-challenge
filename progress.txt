@@ -184,3 +184,19 @@ Implementation:
 - ghostPrompts (static "Key claim?", "Connections?", "Challenge?" chips) are kept — they are UI shortcuts to open the reflection editor, not AI-generated
 - ReflectionPromptService.swift kept in codebase, not auto-invoked from any view
 - Build passes with zero errors
+
+## US-017 — Remove standalone ConnectionSuggestionService UI from InspectorView
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- Removed @State vars: connectionSuggestions: [ConnectionSuggestion] and showSuggestions: Bool from ItemReaderView
+- Removed ConnectionSuggestionPopover overlay block from body (ZStack .topTrailing overlay)
+- Removed triggerSuggestions() call from .onAppear (was gated on recency < 30s after item creation)
+- Removed triggerSuggestions() call after saving an inline reflection edit block
+- Removed triggerSuggestions() call from the Edit/Done toolbar button action (after editing content)
+- Removed showSuggestions/connectionSuggestions reset lines from .onChange(of: item.id)
+- Removed entire // MARK: - Connection Suggestions section: triggerSuggestions(), acceptSuggestion(), dismissSuggestion(), dismissAllSuggestions() (~50 lines)
+- ConnectionSuggestionService.swift kept in codebase, not auto-invoked from any view
+- Existing Connection entities in InspectorView (manual connection management) remain untouched
+- Build passes with zero errors
