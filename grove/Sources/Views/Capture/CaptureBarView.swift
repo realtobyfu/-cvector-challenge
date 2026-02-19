@@ -3,44 +3,88 @@ import SwiftData
 
 // MARK: - Board Suggestion Banner
 
-/// Non-blocking inline suggestion shown after auto-tagging proposes a new board.
-/// Auto-dismisses after 5 seconds. The item is already saved; this is a post-save prompt.
+/// Non-blocking inline suggestion shown after auto-tagging proposes the best board action.
 private struct BoardSuggestionBanner: View {
-    let boardName: String
-    let onAccept: () -> Void
+    let decision: BoardSuggestionDecision
+    let onPrimary: () -> Void
+    let onChoose: () -> Void
     let onDismiss: () -> Void
 
+    private var headline: String {
+        switch decision.mode {
+        case .existing:
+            return "Best fit: \"\(decision.suggestedName)\""
+        case .create:
+            return "Create board \"\(decision.suggestedName)\"?"
+        }
+    }
+
+    private var primaryLabel: String {
+        switch decision.mode {
+        case .existing:
+            return "Add"
+        case .create:
+            return "Create"
+        }
+    }
+
     var body: some View {
-        HStack(spacing: Spacing.sm) {
-            Image(systemName: "square.stack")
-                .font(.groveMeta)
-                .foregroundStyle(Color.textSecondary)
-
-            Text("This doesn't fit your boards. Create \"\(boardName)\"?")
-                .font(.groveBodySmall)
-                .foregroundStyle(Color.textSecondary)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            Button("Create") {
-                onAccept()
-            }
-            .font(.groveBodySmall)
-            .foregroundStyle(Color.textPrimary)
-            .buttonStyle(.plain)
-
-            Button {
-                onDismiss()
-            } label: {
-                Image(systemName: "xmark")
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "square.stack")
                     .font(.groveMeta)
+                    .foregroundStyle(Color.textSecondary)
+
+                Text(headline)
+                    .font(.groveBodySmall)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: Spacing.sm) {
+                if !decision.reason.isEmpty {
+                    Text(decision.reason)
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Text(BoardSuggestionEngine.confidenceLabel(for: decision.confidence))
+                    .font(.groveBadge)
                     .foregroundStyle(Color.textTertiary)
             }
-            .buttonStyle(.plain)
+
+            HStack(spacing: Spacing.sm) {
+                Button(primaryLabel) {
+                    onPrimary()
+                }
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textPrimary)
+                .buttonStyle(.plain)
+
+                Button("Choose…") {
+                    onChoose()
+                }
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textSecondary)
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, Spacing.lg)
-        .padding(.vertical, Spacing.xs)
+        .padding(.vertical, Spacing.sm)
         .background(Color.bgCard)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .padding(.horizontal, Spacing.lg)
@@ -59,8 +103,9 @@ struct CaptureBarView: View {
 
     // Board suggestion state
     @State private var pendingSuggestionItemID: UUID? = nil
-    @State private var pendingSuggestionBoardName: String = ""
+    @State private var pendingSuggestion: BoardSuggestionDecision? = nil
     @State private var showBoardSuggestion = false
+    @State private var showBoardPicker = false
     @State private var suggestionDismissTask: Task<Void, Never>? = nil
 
     /// Currently selected board (passed from ContentView)
@@ -138,29 +183,51 @@ struct CaptureBarView: View {
                 }
             }
 
-            if showBoardSuggestion {
+            if showBoardSuggestion, let pendingSuggestion {
                 BoardSuggestionBanner(
-                    boardName: pendingSuggestionBoardName,
-                    onAccept: { acceptBoardSuggestion() },
+                    decision: pendingSuggestion,
+                    onPrimary: { acceptBoardSuggestion() },
+                    onChoose: {
+                        suggestionDismissTask?.cancel()
+                        showBoardPicker = true
+                    },
                     onDismiss: { dismissBoardSuggestion() }
                 )
                 .padding(.top, Spacing.xs)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .groveNewBoardSuggestion)) { notification in
-            guard let itemID = notification.userInfo?["itemID"] as? UUID,
-                  let boardName = notification.userInfo?["boardName"] as? String,
-                  !boardName.isEmpty else { return }
+            guard let notificationSuggestion = BoardSuggestionMetadata.decision(from: notification) else { return }
 
-            // Only show suggestion if the item wasn't already assigned to a board (currentBoardID check)
             if currentBoardID != nil { return }
 
-            pendingSuggestionItemID = itemID
-            pendingSuggestionBoardName = boardName
+            pendingSuggestionItemID = notificationSuggestion.itemID
+            pendingSuggestion = notificationSuggestion.decision
             withAnimation(.easeOut(duration: 0.2)) {
                 showBoardSuggestion = true
             }
             scheduleAutoDismiss()
+        }
+        .sheet(isPresented: $showBoardPicker) {
+            if let pendingSuggestion {
+                SmartBoardPickerSheet(
+                    boards: boards,
+                    suggestedName: pendingSuggestion.suggestedName,
+                    recommendedBoardID: pendingSuggestion.recommendedBoardID,
+                    prioritizedBoardIDs: pendingSuggestion.alternativeBoardIDs,
+                    onSelectBoard: { board in
+                        selectBoardFromPicker(board)
+                    },
+                    onCreateBoard: { boardName in
+                        createBoardFromPicker(named: boardName)
+                    }
+                )
+            }
+        }
+        .onChange(of: showBoardPicker) { _, isPresented in
+            if !isPresented, showBoardSuggestion {
+                scheduleAutoDismiss()
+            }
         }
     }
 
@@ -195,60 +262,99 @@ struct CaptureBarView: View {
     // MARK: - Board Suggestion Actions
 
     private func acceptBoardSuggestion() {
-        guard let itemID = pendingSuggestionItemID else {
+        guard let pendingSuggestion else {
             dismissBoardSuggestion()
             return
         }
 
-        let boardName = pendingSuggestionBoardName
-        let context = modelContext
+        let suggestedName = BoardSuggestionEngine.cleanedBoardName(pendingSuggestion.suggestedName)
 
-        Task {
-            // Find the item and clear pendingBoardSuggestion metadata
-            let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == itemID })
-            guard let item = try? context.fetch(descriptor).first else { return }
-
-            // Check if a board with this name already exists (race condition guard)
+        Task { @MainActor in
             let boardDescriptor = FetchDescriptor<Board>()
-            let allBoards = (try? context.fetch(boardDescriptor)) ?? []
-            let existing = allBoards.first(where: {
-                $0.title.localizedCaseInsensitiveCompare(boardName) == .orderedSame
-            })
+            let allBoards = (try? modelContext.fetch(boardDescriptor)) ?? []
 
             let board: Board
-            if let existingBoard = existing {
-                board = existingBoard
+            if pendingSuggestion.mode == .existing,
+               let recommendedBoardID = pendingSuggestion.recommendedBoardID,
+               let recommended = allBoards.first(where: { $0.id == recommendedBoardID }) {
+                board = recommended
+            } else if let existing = allBoards.first(where: {
+                $0.title.localizedCaseInsensitiveCompare(suggestedName) == .orderedSame
+            }) {
+                board = existing
             } else {
-                let newBoard = Board(title: boardName)
-                context.insert(newBoard)
+                let newBoard = Board(title: suggestedName.isEmpty ? "General" : suggestedName)
+                modelContext.insert(newBoard)
                 board = newBoard
             }
 
-            if !item.boards.contains(where: { $0.id == board.id }) {
-                item.boards.append(board)
-            }
-            item.metadata["pendingBoardSuggestion"] = nil
-            try? context.save()
+            assignPendingItem(to: board)
         }
 
         dismissBoardSuggestion()
     }
 
+    private func selectBoardFromPicker(_ board: Board) {
+        Task { @MainActor in
+            assignPendingItem(to: board)
+        }
+
+        dismissBoardSuggestion()
+    }
+
+    private func createBoardFromPicker(named boardName: String) {
+        let normalizedName = BoardSuggestionEngine.cleanedBoardName(boardName)
+        guard !normalizedName.isEmpty else { return }
+
+        Task { @MainActor in
+            let boardDescriptor = FetchDescriptor<Board>()
+            let allBoards = (try? modelContext.fetch(boardDescriptor)) ?? []
+
+            if let existing = allBoards.first(where: {
+                $0.title.localizedCaseInsensitiveCompare(normalizedName) == .orderedSame
+            }) {
+                assignPendingItem(to: existing)
+            } else {
+                let newBoard = Board(title: normalizedName)
+                modelContext.insert(newBoard)
+                assignPendingItem(to: newBoard)
+            }
+        }
+
+        dismissBoardSuggestion()
+    }
+
+    private func assignPendingItem(to board: Board) {
+        guard let itemID = pendingSuggestionItemID else { return }
+
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == itemID })
+        guard let item = try? modelContext.fetch(descriptor).first else { return }
+
+        if !item.boards.contains(where: { $0.id == board.id }) {
+            item.boards.append(board)
+        }
+
+        BoardSuggestionMetadata.clearPendingSuggestion(on: item)
+        try? modelContext.save()
+    }
+
     private func dismissBoardSuggestion() {
         suggestionDismissTask?.cancel()
         suggestionDismissTask = nil
+        showBoardPicker = false
 
         withAnimation(.easeOut(duration: 0.2)) {
             showBoardSuggestion = false
         }
+
         pendingSuggestionItemID = nil
-        pendingSuggestionBoardName = ""
+        pendingSuggestion = nil
     }
 
     private func scheduleAutoDismiss() {
         suggestionDismissTask?.cancel()
         suggestionDismissTask = Task {
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: .seconds(7))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 dismissBoardSuggestion()
@@ -269,8 +375,9 @@ struct CaptureBarOverlayView: View {
 
     // Board suggestion state
     @State private var pendingSuggestionItemID: UUID? = nil
-    @State private var pendingSuggestionBoardName: String = ""
+    @State private var pendingSuggestion: BoardSuggestionDecision? = nil
     @State private var showBoardSuggestion = false
+    @State private var showBoardPicker = false
     @State private var suggestionDismissTask: Task<Void, Never>? = nil
 
     var currentBoardID: UUID?
@@ -323,10 +430,14 @@ struct CaptureBarOverlayView: View {
             .padding(.horizontal, Spacing.lg)
             .padding(.vertical, Spacing.md)
 
-            if showBoardSuggestion {
+            if showBoardSuggestion, let pendingSuggestion {
                 BoardSuggestionBanner(
-                    boardName: pendingSuggestionBoardName,
-                    onAccept: { acceptBoardSuggestion() },
+                    decision: pendingSuggestion,
+                    onPrimary: { acceptBoardSuggestion() },
+                    onChoose: {
+                        suggestionDismissTask?.cancel()
+                        showBoardPicker = true
+                    },
                     onDismiss: { dismissBoardSuggestion() }
                 )
                 .padding(.vertical, Spacing.xs)
@@ -357,18 +468,37 @@ struct CaptureBarOverlayView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .groveNewBoardSuggestion)) { notification in
-            guard let itemID = notification.userInfo?["itemID"] as? UUID,
-                  let boardName = notification.userInfo?["boardName"] as? String,
-                  !boardName.isEmpty else { return }
+            guard let notificationSuggestion = BoardSuggestionMetadata.decision(from: notification) else { return }
 
             if currentBoardID != nil { return }
 
-            pendingSuggestionItemID = itemID
-            pendingSuggestionBoardName = boardName
+            pendingSuggestionItemID = notificationSuggestion.itemID
+            pendingSuggestion = notificationSuggestion.decision
             withAnimation(.easeOut(duration: 0.2)) {
                 showBoardSuggestion = true
             }
             scheduleAutoDismiss()
+        }
+        .sheet(isPresented: $showBoardPicker) {
+            if let pendingSuggestion {
+                SmartBoardPickerSheet(
+                    boards: boards,
+                    suggestedName: pendingSuggestion.suggestedName,
+                    recommendedBoardID: pendingSuggestion.recommendedBoardID,
+                    prioritizedBoardIDs: pendingSuggestion.alternativeBoardIDs,
+                    onSelectBoard: { board in
+                        selectBoardFromPicker(board)
+                    },
+                    onCreateBoard: { boardName in
+                        createBoardFromPicker(named: boardName)
+                    }
+                )
+            }
+        }
+        .onChange(of: showBoardPicker) { _, isPresented in
+            if !isPresented, showBoardSuggestion {
+                scheduleAutoDismiss()
+            }
         }
         .onAppear {
             isFocused = true
@@ -398,7 +528,6 @@ struct CaptureBarOverlayView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             withAnimation(.easeOut(duration: 0.2)) {
                 showConfirmation = false
-                // Don't auto-dismiss overlay if board suggestion is visible
                 if !showBoardSuggestion {
                     dismiss()
                 }
@@ -415,59 +544,101 @@ struct CaptureBarOverlayView: View {
     // MARK: - Board Suggestion Actions
 
     private func acceptBoardSuggestion() {
-        guard let itemID = pendingSuggestionItemID else {
+        guard let pendingSuggestion else {
             dismissBoardSuggestion()
             return
         }
 
-        let boardName = pendingSuggestionBoardName
-        let context = modelContext
+        let suggestedName = BoardSuggestionEngine.cleanedBoardName(pendingSuggestion.suggestedName)
 
-        Task {
-            let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == itemID })
-            guard let item = try? context.fetch(descriptor).first else { return }
-
+        Task { @MainActor in
             let boardDescriptor = FetchDescriptor<Board>()
-            let allBoards = (try? context.fetch(boardDescriptor)) ?? []
-            let existing = allBoards.first(where: {
-                $0.title.localizedCaseInsensitiveCompare(boardName) == .orderedSame
-            })
+            let allBoards = (try? modelContext.fetch(boardDescriptor)) ?? []
 
             let board: Board
-            if let existingBoard = existing {
-                board = existingBoard
+            if pendingSuggestion.mode == .existing,
+               let recommendedBoardID = pendingSuggestion.recommendedBoardID,
+               let recommended = allBoards.first(where: { $0.id == recommendedBoardID }) {
+                board = recommended
+            } else if let existing = allBoards.first(where: {
+                $0.title.localizedCaseInsensitiveCompare(suggestedName) == .orderedSame
+            }) {
+                board = existing
             } else {
-                let newBoard = Board(title: boardName)
-                context.insert(newBoard)
+                let newBoard = Board(title: suggestedName.isEmpty ? "General" : suggestedName)
+                modelContext.insert(newBoard)
                 board = newBoard
             }
 
-            if !item.boards.contains(where: { $0.id == board.id }) {
-                item.boards.append(board)
-            }
-            item.metadata["pendingBoardSuggestion"] = nil
-            try? context.save()
+            assignPendingItem(to: board)
         }
 
         dismissBoardSuggestion()
         dismiss()
     }
 
+    private func selectBoardFromPicker(_ board: Board) {
+        Task { @MainActor in
+            assignPendingItem(to: board)
+        }
+
+        dismissBoardSuggestion()
+        dismiss()
+    }
+
+    private func createBoardFromPicker(named boardName: String) {
+        let normalizedName = BoardSuggestionEngine.cleanedBoardName(boardName)
+        guard !normalizedName.isEmpty else { return }
+
+        Task { @MainActor in
+            let boardDescriptor = FetchDescriptor<Board>()
+            let allBoards = (try? modelContext.fetch(boardDescriptor)) ?? []
+
+            if let existing = allBoards.first(where: {
+                $0.title.localizedCaseInsensitiveCompare(normalizedName) == .orderedSame
+            }) {
+                assignPendingItem(to: existing)
+            } else {
+                let newBoard = Board(title: normalizedName)
+                modelContext.insert(newBoard)
+                assignPendingItem(to: newBoard)
+            }
+        }
+
+        dismissBoardSuggestion()
+        dismiss()
+    }
+
+    private func assignPendingItem(to board: Board) {
+        guard let itemID = pendingSuggestionItemID else { return }
+
+        let descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == itemID })
+        guard let item = try? modelContext.fetch(descriptor).first else { return }
+
+        if !item.boards.contains(where: { $0.id == board.id }) {
+            item.boards.append(board)
+        }
+
+        BoardSuggestionMetadata.clearPendingSuggestion(on: item)
+        try? modelContext.save()
+    }
+
     private func dismissBoardSuggestion() {
         suggestionDismissTask?.cancel()
         suggestionDismissTask = nil
+        showBoardPicker = false
 
         withAnimation(.easeOut(duration: 0.2)) {
             showBoardSuggestion = false
         }
         pendingSuggestionItemID = nil
-        pendingSuggestionBoardName = ""
+        pendingSuggestion = nil
     }
 
     private func scheduleAutoDismiss() {
         suggestionDismissTask?.cancel()
         suggestionDismissTask = Task {
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: .seconds(7))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 dismissBoardSuggestion()

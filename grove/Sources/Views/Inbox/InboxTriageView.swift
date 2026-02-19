@@ -12,6 +12,9 @@ struct InboxTriageView: View {
     @State private var focusedIndex: Int = 0
     @State private var showBoardPicker = false
     @State private var itemToAssign: Item?
+    @State private var boardPickerSuggestedName: String = ""
+    @State private var boardPickerRecommendedBoardID: UUID? = nil
+    @State private var boardPickerAlternativeBoardIDs: [UUID] = []
 
     private var inboxItems: [Item] {
         allItems.filter { $0.status == .inbox }
@@ -35,18 +38,34 @@ struct InboxTriageView: View {
         }
         .sheet(isPresented: $showBoardPicker) {
             if let item = itemToAssign {
-                BoardPickerSheet(boards: boards) { board in
-                    let viewModel = ItemViewModel(modelContext: modelContext)
-                    viewModel.assignToBoard(item, board: board)
-                    showBoardPicker = false
-                    itemToAssign = nil
-                }
+                SmartBoardPickerSheet(
+                    boards: boards,
+                    suggestedName: boardPickerSuggestedName,
+                    recommendedBoardID: boardPickerRecommendedBoardID,
+                    prioritizedBoardIDs: boardPickerAlternativeBoardIDs,
+                    onSelectBoard: { board in
+                        let viewModel = ItemViewModel(modelContext: modelContext)
+                        viewModel.assignToBoard(item, board: board)
+                        BoardSuggestionMetadata.clearPendingSuggestion(on: item)
+                        try? modelContext.save()
+                        resetBoardPickerState()
+                    },
+                    onCreateBoard: { title in
+                        createAndAssignBoard(named: title, to: item)
+                        resetBoardPickerState()
+                    }
+                )
             }
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleVideoDrop(providers: providers)
         }
         .background(keyboardHandlers)
+        .onChange(of: showBoardPicker) { _, isPresented in
+            if !isPresented, itemToAssign != nil {
+                resetBoardPickerState()
+            }
+        }
     }
 
     // MARK: - Inbox List
@@ -235,17 +254,27 @@ struct InboxTriageView: View {
         item.status = .active
         item.updatedAt = .now
 
-        // If there's a suggested board and item has no board yet, auto-assign
+        // Auto-assign only when classification confidence is high
         if item.boards.isEmpty,
-           let suggestedName = item.metadata["suggestedBoard"],
-           let matchedBoard = boards.first(where: { $0.title.localizedCaseInsensitiveCompare(suggestedName) == .orderedSame }) {
+           let decision = BoardSuggestionMetadata.decision(from: item),
+           let matchedBoard = autoAssignBoard(from: decision) {
             item.boards.append(matchedBoard)
+            BoardSuggestionMetadata.clearPendingSuggestion(on: item)
+        } else if item.boards.isEmpty,
+                  let suggestedName = item.metadata["suggestedBoard"],
+                  let matchedBoard = boards.first(where: { $0.title.localizedCaseInsensitiveCompare(suggestedName) == .orderedSame }) {
+            item.boards.append(matchedBoard)
+            BoardSuggestionMetadata.clearPendingSuggestion(on: item)
         }
 
         try? modelContext.save()
 
         // Only show board picker if the item still has no board assigned
         if item.boards.isEmpty {
+            let decision = BoardSuggestionMetadata.decision(from: item)
+            boardPickerSuggestedName = decision?.suggestedName ?? (item.metadata["suggestedBoard"] ?? "")
+            boardPickerRecommendedBoardID = decision?.recommendedBoardID
+            boardPickerAlternativeBoardIDs = decision?.alternativeBoardIDs ?? []
             itemToAssign = item
             showBoardPicker = true
         }
@@ -261,6 +290,46 @@ struct InboxTriageView: View {
         }
 
         adjustFocusAfterRemoval()
+    }
+
+    private func autoAssignBoard(from decision: BoardSuggestionDecision) -> Board? {
+        guard decision.mode == .existing else { return nil }
+        guard decision.confidence >= 0.78 else { return nil }
+
+        if let recommendedBoardID = decision.recommendedBoardID,
+           let recommended = boards.first(where: { $0.id == recommendedBoardID }) {
+            return recommended
+        }
+
+        return boards.first(where: { $0.title.localizedCaseInsensitiveCompare(decision.suggestedName) == .orderedSame })
+    }
+
+    private func createAndAssignBoard(named rawTitle: String, to item: Item) {
+        let title = BoardSuggestionEngine.cleanedBoardName(rawTitle)
+        guard !title.isEmpty else { return }
+
+        if let existingBoard = boards.first(where: {
+            $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame
+        }) {
+            if !item.boards.contains(where: { $0.id == existingBoard.id }) {
+                item.boards.append(existingBoard)
+            }
+        } else {
+            let board = Board(title: title)
+            modelContext.insert(board)
+            item.boards.append(board)
+        }
+
+        BoardSuggestionMetadata.clearPendingSuggestion(on: item)
+        try? modelContext.save()
+    }
+
+    private func resetBoardPickerState() {
+        showBoardPicker = false
+        itemToAssign = nil
+        boardPickerSuggestedName = ""
+        boardPickerRecommendedBoardID = nil
+        boardPickerAlternativeBoardIDs = []
     }
 
     // MARK: - Tag Actions
@@ -313,65 +382,5 @@ struct InboxTriageView: View {
             handled = true
         }
         return handled
-    }
-}
-
-// MARK: - Board Picker Sheet
-
-struct BoardPickerSheet: View {
-    let boards: [Board]
-    let onSelect: (Board) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Assign to Board")
-                .font(.groveItemTitle)
-                .padding(.top)
-
-            if boards.isEmpty {
-                Text("No boards yet. Create one from the sidebar.")
-                    .font(.groveBodySecondary)
-                    .foregroundStyle(Color.textSecondary)
-                    .padding()
-            } else {
-                List(boards) { board in
-                    Button {
-                        onSelect(board)
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if let hex = board.color {
-                                Circle()
-                                    .fill(Color(hex: hex))
-                                    .frame(width: 10, height: 10)
-                            }
-                            if let icon = board.icon {
-                                Image(systemName: icon)
-                                    .font(.groveBodySecondary)
-                                    .foregroundStyle(Color.textSecondary)
-                            }
-                            Text(board.title)
-                                .font(.groveBody)
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .frame(minHeight: 200)
-            }
-
-            HStack {
-                Spacer()
-                Button("Skip") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-            }
-            .padding(.horizontal)
-            .padding(.bottom)
-        }
-        .frame(width: 320, height: 360)
     }
 }

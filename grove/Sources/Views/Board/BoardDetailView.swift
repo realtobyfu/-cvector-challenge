@@ -31,11 +31,10 @@ struct BoardDetailView: View {
     @State private var viewMode: BoardViewMode = .grid
     @State private var sortOption: BoardSortOption = .manual
     @State private var draggingItemID: UUID?
-@State private var selectedFilterTags: Set<UUID> = []
+    @State private var selectedFilterTags: Set<UUID> = []
     @State private var showSynthesisSheet = false
     @State private var showItemPicker = false
     @State private var pickedItems: [Item] = []
-    @State private var showExportSheet = false
     @State private var itemToDelete: Item?
     @State private var isSuggestionsCollapsed = false
     @State private var boardSuggestions: [Suggestion] = []
@@ -156,26 +155,7 @@ struct BoardDetailView: View {
             handleVideoDrop(providers: providers)
         }
         .navigationTitle(board.title)
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                if !board.isSmart {
-                    addNoteButton
-                }
-
-                synthesisButton
-                exportButton
-
-                Spacer()
-
-                if board.isSmart && !board.smartRuleTags.isEmpty {
-                    smartBoardRuleIndicator
-                }
-
-                sortPicker
-                viewModePicker
-            }
-        }
-.sheet(isPresented: $showItemPicker, onDismiss: {
+        .sheet(isPresented: $showItemPicker, onDismiss: {
             if !pickedItems.isEmpty {
                 showSynthesisSheet = true
             }
@@ -199,8 +179,15 @@ struct BoardDetailView: View {
                 }
             )
         }
-        .sheet(isPresented: $showExportSheet) {
-            BoardExportSheet(board: board, items: effectiveItems)
+        .toolbar {
+            ToolbarItemGroup(placement: .secondaryAction) {
+                sortPicker
+                viewModePicker
+                synthesisButton
+                if board.isSmart && !board.smartRuleTags.isEmpty {
+                    smartBoardRuleIndicator
+                }
+            }
         }
         .background(boardKeyboardHandlers)
         .task {
@@ -505,8 +492,8 @@ struct BoardDetailView: View {
         let canReorder = sortOption == .manual && !board.isSmart
         return ScrollView {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 12)],
-                spacing: 12
+                columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: Spacing.lg)],
+                spacing: Spacing.lg
             ) {
                 ForEach(sortedFilteredItems) { item in
                     ItemCardView(item: item, showTags: false, onReadInApp: {
@@ -538,7 +525,7 @@ struct BoardDetailView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: sortedFilteredItems.map(\.id))
-            .padding()
+            .padding(Spacing.lg)
         }
     }
 
@@ -633,8 +620,6 @@ struct BoardDetailView: View {
         .padding(.vertical, 6)
     }
 
-    // MARK: - Toolbar Items
-
     private var smartBoardRuleIndicator: some View {
         HStack(spacing: 4) {
             Image(systemName: "gearshape.2")
@@ -647,7 +632,11 @@ struct BoardDetailView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(Color.accentBadge)
+        .background(Color.bgInput)
+        .overlay(
+            Capsule()
+                .stroke(Color.borderPrimary, lineWidth: 1)
+        )
         .clipShape(Capsule())
         .help("Smart board rules: \(board.smartRuleLogic == .and ? "AND" : "OR") logic")
     }
@@ -659,18 +648,10 @@ struct BoardDetailView: View {
         } label: {
             Label("Synthesize", systemImage: "sparkles")
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
         .help("Generate an AI synthesis note from items in this board")
         .disabled(effectiveItems.count < 2)
-    }
-
-    private var exportButton: some View {
-        Button {
-            showExportSheet = true
-        } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
-        }
-        .help("Export this board")
-        .disabled(effectiveItems.isEmpty)
     }
 
     private var addNoteButton: some View {
@@ -679,6 +660,7 @@ struct BoardDetailView: View {
         } label: {
             Label("New Note", systemImage: "square.and.pencil")
         }
+        .labelStyle(.iconOnly)
         .help("Add a new note to this board")
     }
 
@@ -699,20 +681,32 @@ struct BoardDetailView: View {
                 }
             }
         } label: {
-            Label("Sort", systemImage: "arrow.up.arrow.down")
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                Text("Sort: \(sortOption.rawValue)")
+                    .lineLimit(1)
+            }
+            .font(.groveBodySmall)
+            .foregroundStyle(Color.textPrimary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.bgInput)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.borderPrimary, lineWidth: 1)
+            )
         }
         .help("Sort items")
     }
 
     private var viewModePicker: some View {
         Picker("View Mode", selection: $viewMode) {
-            ForEach(BoardViewMode.allCases, id: \.self) { mode in
-                Image(systemName: mode.iconName)
-                    .tag(mode)
-            }
+            Label("Grid", systemImage: BoardViewMode.grid.iconName).tag(BoardViewMode.grid)
+            Label("List", systemImage: BoardViewMode.list.iconName).tag(BoardViewMode.list)
         }
         .pickerStyle(.segmented)
-        .frame(width: 80)
+        .frame(width: 160)
         .help("Toggle grid/list view")
     }
 

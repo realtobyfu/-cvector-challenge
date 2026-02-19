@@ -3,7 +3,15 @@ import SwiftData
 
 extension Notification.Name {
     /// Posted after auto-tagging when a new board should be suggested to the user.
-    /// userInfo keys: "itemID" (UUID), "boardName" (String), "isColdStart" (Bool)
+    /// userInfo keys:
+    /// - "itemID" (UUID)
+    /// - "boardName" (String)
+    /// - "isColdStart" (Bool)
+    /// - "mode" (String: existing/create)
+    /// - "boardID" (String UUID, optional)
+    /// - "confidence" (Double)
+    /// - "reason" (String, optional)
+    /// - "alternatives" (comma-separated UUID list, optional)
     static let groveNewBoardSuggestion = Notification.Name("groveNewBoardSuggestion")
 }
 
@@ -106,31 +114,41 @@ final class AutoTagService: AutoTagServiceProtocol {
             item.metadata["summary"] = String(summary.prefix(120))
         }
 
+        let connectionService = ConnectionSuggestionService(modelContext: context)
+
         // Apply suggested board
         if let suggestedBoard = parsed.suggested_board, !suggestedBoard.isEmpty {
-            item.metadata["suggestedBoard"] = suggestedBoard
-
             let boardDescriptorAll = FetchDescriptor<Board>()
             let allBoards = (try? context.fetch(boardDescriptorAll)) ?? []
-
-            // Always suggest — never silently assign to an existing board
             let isColdStart = allBoards.isEmpty
-            item.metadata["pendingBoardSuggestion"] = suggestedBoard
+
+            let suggestionEngine = BoardSuggestionEngine()
+            let decision = suggestionEngine.resolveSuggestion(
+                for: item,
+                suggestedName: suggestedBoard,
+                boards: allBoards
+            )
+            BoardSuggestionMetadata.apply(decision, to: item)
             try? context.save()
 
-            let itemID = item.id
             NotificationCenter.default.post(
                 name: .groveNewBoardSuggestion,
                 object: nil,
-                userInfo: [
-                    "itemID": itemID,
-                    "boardName": suggestedBoard,
-                    "isColdStart": isColdStart
-                ]
+                userInfo: BoardSuggestionMetadata.notificationUserInfo(
+                    itemID: item.id,
+                    decision: decision,
+                    isColdStart: isColdStart
+                )
             )
+
+            // Auto-connect: find and persist high-confidence links to existing items
+            await connectionService.autoConnect(item: item, in: context)
             return
         }
 
         try? context.save()
+
+        // Auto-connect: find and persist high-confidence links to existing items
+        await connectionService.autoConnect(item: item, in: context)
     }
 }

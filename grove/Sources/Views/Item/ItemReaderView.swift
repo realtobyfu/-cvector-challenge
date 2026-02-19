@@ -12,9 +12,6 @@ struct ItemReaderView: View {
     @State private var videoCurrentTime: Double = 0
     @State private var videoDuration: Double = 0
     @State private var videoSeekTarget: Double? = nil
-    // Reflection state
-    @State private var editingBlockID: UUID?
-    @State private var editBlockContent = ""
     // Text selection for Reflect button
     @State private var selectedHighlightText: String?
     // Drag reordering state
@@ -24,8 +21,9 @@ struct ItemReaderView: View {
     // Delete confirmation
     @State private var blockToDelete: ReflectionBlock?
     @State private var showDeleteConfirmation = false
-    // New reflection editor sheet
+    // New reflection editor sheet / editing existing block in panel
     @State private var showReflectionEditor = false
+    @State private var editingBlockInPanel: ReflectionBlock?
     @State private var editorBlockType: ReflectionBlockType = .keyInsight
     @State private var editorContent = ""
     @State private var editorHighlight: String?
@@ -55,12 +53,12 @@ struct ItemReaderView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            if showReflectionEditor {
-                // Split-pane: source/article left, reflection editor right
+            if !sortedReflections.isEmpty || showReflectionEditor {
+                // Modes B and C: persistent split layout
                 GeometryReader { geo in
                     let minPanel: CGFloat = 280
                     let maxPanel = max(minPanel, geo.size.width * 0.72)
-                    let effectiveWidth = reflectionPanelWidth > 0 ? reflectionPanelWidth : geo.size.width * 0.6
+                    let effectiveWidth = reflectionPanelWidth > 0 ? reflectionPanelWidth : geo.size.width * 0.45
                     let clampedWidth = min(max(effectiveWidth, minPanel), maxPanel)
 
                     HStack(spacing: 0) {
@@ -77,7 +75,8 @@ struct ItemReaderView: View {
                                                 imageData: thumbnailData,
                                                 height: 200,
                                                 showPlayOverlay: false,
-                                                cornerRadius: 0
+                                                cornerRadius: 0,
+                                                contentMode: item.type == .article ? .fit : .fill
                                             )
                                             .padding(.horizontal)
                                             .onTapGesture {
@@ -118,23 +117,37 @@ struct ItemReaderView: View {
                                     )
                             }
 
-                        // Right: reflection editor
-                        reflectionEditorPanel
-                            .frame(width: clampedWidth)
-                            .frame(maxHeight: .infinity)
-                            .background(Color.bgPrimary)
-                            .transition(.move(edge: .trailing))
+                        // Right: swap between reflections list (Mode B) and editor (Mode C)
+                        Group {
+                            if showReflectionEditor {
+                                reflectionEditorPanel
+                                    .transition(.asymmetric(
+                                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                                        removal: .move(edge: .trailing).combined(with: .opacity)
+                                    ))
+                            } else {
+                                reflectionsListPanel
+                                    .transition(.asymmetric(
+                                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                                        removal: .move(edge: .trailing).combined(with: .opacity)
+                                    ))
+                            }
+                        }
+                        .animation(.easeOut(duration: 0.25), value: showReflectionEditor)
+                        .frame(width: clampedWidth)
+                        .frame(maxHeight: .infinity)
+                        .background(Color.bgPrimary)
                     }
                 }
             } else if showArticleWebView, let url = articleURL {
-                // Full-width WebView reading mode.
+                // Full-width WebView reading mode (only when no reflections).
                 // WKWebView must NOT be inside a SwiftUI ScrollView on macOS —
                 // the ScrollView intercepts mouse events, making the WebView non-interactive.
                 webViewPanel(url: url)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.bgPrimary)
             } else {
-                // Normal mode: full scrollable reader with content + reflections + suggestions
+                // Mode A: single column with ghost prompts
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         itemHeader
@@ -144,7 +157,8 @@ struct ItemReaderView: View {
                                 imageData: thumbnailData,
                                 height: 200,
                                 showPlayOverlay: false,
-                                cornerRadius: 0
+                                cornerRadius: 0,
+                                contentMode: item.type == .article ? .fit : .fill
                             )
                             .padding(.horizontal)
                             .onTapGesture {
@@ -172,11 +186,14 @@ struct ItemReaderView: View {
         .onAppear {
             backfillThumbnailIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .groveOpenReflectMode)) { _ in
+            openReflectionEditor(type: .keyInsight, content: "", highlight: nil)
+        }
         .onChange(of: item.id) {
             isEditingContent = false
-            editingBlockID = nil
             selectedHighlightText = nil
             showReflectionEditor = false
+            editingBlockInPanel = nil
             showArticleWebView = false
             editorContent = ""
             editorHighlight = nil
@@ -184,7 +201,7 @@ struct ItemReaderView: View {
             editableSummary = ""
         }
         .sheet(isPresented: $showItemExportSheet) {
-            ItemExportSheet(items: [item])
+            ItemExportSheet(item: item)
         }
         .alert("Delete Reflection Block?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -876,17 +893,6 @@ struct ItemReaderView: View {
                 .help("Change type")
 
                 Button {
-                    editingBlockID = block.id
-                    editBlockContent = block.content
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.groveMeta)
-                        .foregroundStyle(Color.textMuted)
-                }
-                .buttonStyle(.plain)
-                .help("Edit")
-
-                Button {
                     blockToDelete = block
                     showDeleteConfirmation = true
                 } label: {
@@ -913,13 +919,10 @@ struct ItemReaderView: View {
                 .padding(.leading, 4)
             }
 
-            // Content or edit mode
-            if editingBlockID == block.id {
-                editBlockEditor(block)
-            } else if block.content.isEmpty {
+            // Content — click to open in editor panel
+            if block.content.isEmpty {
                 Button {
-                    editingBlockID = block.id
-                    editBlockContent = block.content
+                    openBlockForEditing(block)
                 } label: {
                     Text("Click to add your reflection...")
                         .font(.groveGhostText)
@@ -932,8 +935,7 @@ struct ItemReaderView: View {
                 .buttonStyle(.plain)
             } else {
                 Button {
-                    editingBlockID = block.id
-                    editBlockContent = block.content
+                    openBlockForEditing(block)
                 } label: {
                     MarkdownTextView(markdown: block.content)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -955,7 +957,78 @@ struct ItemReaderView: View {
         )
     }
 
-    // MARK: - Reflection Editor Panel (split-pane right side)
+    // MARK: - Reflections List Panel (Mode B — split-pane right side)
+
+    private var reflectionsListPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header: "REFLECTIONS" + count badge + "+" menu
+            HStack {
+                Text("REFLECTIONS")
+                    .sectionHeaderStyle()
+
+                Text("\(item.reflections.count)")
+                    .font(.groveBadge)
+                    .foregroundStyle(Color.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentBadge)
+                    .clipShape(Capsule())
+
+                Spacer()
+
+                Menu {
+                    ForEach(ReflectionBlockType.allCases, id: \.self) { type in
+                        Button {
+                            openReflectionEditor(type: type, content: "", highlight: nil)
+                        } label: {
+                            Label(type.displayName, systemImage: type.systemImage)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 22)
+                .help("Add reflection")
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(sortedReflections) { block in
+                        HStack(alignment: .top, spacing: 4) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.caption2)
+                                .foregroundStyle(Color.textTertiary)
+                                .frame(width: 12, height: 20)
+                                .padding(.top, 14)
+                                .onDrag {
+                                    draggingBlock = block
+                                    return NSItemProvider(object: block.id.uuidString as NSString)
+                                }
+
+                            reflectionBlockCard(block)
+                        }
+                        .onDrop(of: [.text], delegate: BlockDropDelegate(
+                            targetBlock: block,
+                            allBlocks: sortedReflections,
+                            draggingBlock: $draggingBlock,
+                            modelContext: modelContext
+                        ))
+                    }
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    // MARK: - Reflection Editor Panel (Mode C — split-pane right side)
 
     private var reflectionEditorPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1039,53 +1112,45 @@ struct ItemReaderView: View {
         }
         editorContent = ""
         editorHighlight = nil
+        editingBlockInPanel = nil
         NotificationCenter.default.post(name: .groveExitFocusMode, object: nil)
     }
 
     private func saveNewReflection() {
         let trimmed = editorContent.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        commitNewBlock(type: editorBlockType, content: trimmed, highlight: editorHighlight)
+        if let block = editingBlockInPanel {
+            block.content = trimmed
+            block.blockType = editorBlockType
+            item.updatedAt = .now
+            try? modelContext.save()
+        } else {
+            commitNewBlock(type: editorBlockType, content: trimmed, highlight: editorHighlight)
+        }
         withAnimation(.easeOut(duration: 0.25)) {
             showReflectionEditor = false
         }
         editorContent = ""
         editorHighlight = nil
+        editingBlockInPanel = nil
         NotificationCenter.default.post(name: .groveExitFocusMode, object: nil)
     }
 
-    // MARK: - Block Editor
+    // MARK: - Block CRUD
 
-    private func editBlockEditor(_ block: ReflectionBlock) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            RichMarkdownEditor(
-                text: $editBlockContent,
-                sourceItem: item,
-                minHeight: 60
-            )
-
-            HStack {
-                Button("Cancel") {
-                    editingBlockID = nil
-                    editBlockContent = ""
-                }
-                .font(.groveBodySecondary)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("Save") {
-                    saveEditedBlock(block)
-                }
-                .font(.groveBodySecondary)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(Color.textPrimary)
-                .keyboardShortcut(.return, modifiers: .command)
-            }
+    private func openBlockForEditing(_ block: ReflectionBlock) {
+        editingBlockInPanel = block
+        editorBlockType = block.blockType
+        editorContent = block.content
+        editorHighlight = block.highlight
+        withAnimation(.easeOut(duration: 0.25)) {
+            showReflectionEditor = true
+        }
+        NotificationCenter.default.post(name: .groveEnterFocusMode, object: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isNewReflectionFocused = true
         }
     }
-
-    // MARK: - Block CRUD
 
     private func openReflectionEditor(type: ReflectionBlockType, content: String, highlight: String?) {
         editorBlockType = type
@@ -1117,20 +1182,13 @@ struct ItemReaderView: View {
         try? modelContext.save()
     }
 
-    private func saveEditedBlock(_ block: ReflectionBlock) {
-        block.content = editBlockContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        item.updatedAt = .now
-        try? modelContext.save()
-        editingBlockID = nil
-        editBlockContent = ""
-
-    }
-
     private func deleteBlock(_ block: ReflectionBlock) {
-        item.reflections.removeAll { $0.id == block.id }
-        modelContext.delete(block)
-        item.updatedAt = .now
-        try? modelContext.save()
+        withAnimation(.easeOut(duration: 0.25)) {
+            item.reflections.removeAll { $0.id == block.id }
+            modelContext.delete(block)
+            item.updatedAt = .now
+            try? modelContext.save()
+        }
     }
 
     // MARK: - Thumbnail Backfill

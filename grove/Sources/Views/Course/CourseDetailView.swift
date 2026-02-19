@@ -30,7 +30,7 @@ struct CourseDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(course.title)
         .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
+            ToolbarItemGroup(placement: .secondaryAction) {
                 Button {
                     showAddLectureSheet = true
                 } label: {

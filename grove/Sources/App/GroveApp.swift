@@ -93,11 +93,7 @@ struct GroveApp: App {
                     .tabItem {
                         Label("AI", systemImage: "sparkles")
                     }
-                ExportSettingsView()
-                    .tabItem {
-                        Label("Export", systemImage: "square.and.arrow.up")
-                    }
-                SyncSettingsView()
+SyncSettingsView()
                     .tabItem {
                         Label("Sync", systemImage: "icloud")
                     }
@@ -135,9 +131,6 @@ struct GroveMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .importExport) {
-            Button("Export Board...") {
-                NotificationCenter.default.post(name: .groveExportBoard, object: nil)
-            }
             Button("Export Selected Item...") {
                 NotificationCenter.default.post(name: .groveExportItem, object: nil)
             }

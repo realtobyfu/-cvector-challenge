@@ -189,18 +189,23 @@ final class ItemViewModel {
             let suggestedName = words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
             guard !suggestedName.isEmpty else { return }
 
-            item.metadata["pendingBoardSuggestion"] = suggestedName
+            let suggestionEngine = BoardSuggestionEngine()
+            let decision = suggestionEngine.resolveSuggestion(
+                for: item,
+                suggestedName: suggestedName,
+                boards: allBoards
+            )
+            BoardSuggestionMetadata.apply(decision, to: item)
             try? context.save()
 
-            let itemID = item.id
             NotificationCenter.default.post(
                 name: .groveNewBoardSuggestion,
                 object: nil,
-                userInfo: [
-                    "itemID": itemID,
-                    "boardName": suggestedName,
-                    "isColdStart": true
-                ]
+                userInfo: BoardSuggestionMetadata.notificationUserInfo(
+                    itemID: item.id,
+                    decision: decision,
+                    isColdStart: true
+                )
             )
         }
     }
@@ -302,7 +307,7 @@ final class ItemViewModel {
     // MARK: - Local Video Import
 
     /// Supported video file extensions
-    static let supportedVideoExtensions: Set<String> = ["mp4", "mov", "mkv", "m4v", "avi"]
+    nonisolated static let supportedVideoExtensions: Set<String> = ["mp4", "mov", "mkv", "m4v", "avi"]
 
     /// Supported UTTypes for video drag-and-drop
     static var supportedVideoUTTypes: [UTType] {
@@ -356,7 +361,7 @@ final class ItemViewModel {
     }
 
     /// Check if a file path points to a supported video file
-    static func isSupportedVideoFile(_ path: String) -> Bool {
+    nonisolated static func isSupportedVideoFile(_ path: String) -> Bool {
         let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
         return supportedVideoExtensions.contains(ext)
     }

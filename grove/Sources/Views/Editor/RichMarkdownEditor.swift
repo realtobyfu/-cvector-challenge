@@ -28,7 +28,14 @@ struct RichMarkdownEditor: View {
     }
 
     var body: some View {
-        if proseMode {
+        if #available(macOS 26, *) {
+            AttributedStringEditorView(
+                markdownText: $text,
+                sourceItem: sourceItem,
+                proseMode: proseMode,
+                minHeight: minHeight
+            )
+        } else if proseMode {
             VStack(spacing: 0) {
                 MarkdownNSTextView(
                     text: $text,

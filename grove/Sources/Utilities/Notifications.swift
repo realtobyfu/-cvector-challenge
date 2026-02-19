@@ -9,7 +9,6 @@ extension Notification.Name {
     static let groveGoToHome = Notification.Name("groveGoToHome")
     static let groveGoToBoard = Notification.Name("groveGoToBoard")
     static let groveGoToTags = Notification.Name("groveGoToTags")
-    static let groveExportBoard = Notification.Name("groveExportBoard")
     static let groveExportItem = Notification.Name("groveExportItem")
     static let groveToggleChat = Notification.Name("groveToggleChat")
     static let groveOpenConversation = Notification.Name("groveOpenConversation")
@@ -25,4 +24,5 @@ extension Notification.Name {
     static let groveDiscussItem = Notification.Name("groveDiscussItem")
     /// Object: String — prompt shown as an assistant message; user types first reply
     static let groveStartDialecticWithDisplayPrompt = Notification.Name("groveStartDialecticWithDisplayPrompt")
+    static let groveOpenReflectMode = Notification.Name("groveOpenReflectMode")
 }

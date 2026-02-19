@@ -43,9 +43,6 @@ struct HomeView: View {
                 CaptureBarView()
                     .padding(.bottom, Spacing.sm)
 
-                noteWriterEntry
-                    .padding(.bottom, Spacing.xl)
-
                 inboxSection
                     .padding(.bottom, Spacing.xl)
 
@@ -74,33 +71,6 @@ struct HomeView: View {
         .task {
             await starterService.refresh(items: allItems)
         }
-    }
-
-    // MARK: - Note Writer Entry
-
-    private var noteWriterEntry: some View {
-        Button {
-            NotificationCenter.default.post(name: .groveNewNote, object: nil)
-        } label: {
-            HStack(spacing: Spacing.sm) {
-                Image(systemName: "square.and.pencil")
-                    .font(.groveMeta)
-                    .foregroundStyle(Color.textMuted)
-                    .frame(width: 16)
-                Text("Write a note…")
-                    .font(.groveGhostText)
-                    .foregroundStyle(Color.textMuted)
-                Spacer()
-            }
-            .padding(.horizontal, Spacing.lg)
-            .padding(.vertical, Spacing.sm)
-            .background(Color.bgInput)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.borderInput, lineWidth: 1))
-            .padding(.horizontal, Spacing.lg)
-            .padding(.vertical, Spacing.sm)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Inbox Section

@@ -24,7 +24,6 @@ struct ContentView: View {
     @State private var showSearch = false
     @State private var showCaptureOverlay = false
     @State private var nudgeEngine: NudgeEngine?
-    @State private var showBoardExportSheet = false
     @State private var showItemExportSheet = false
     @State private var showChatPanel = false
     @State private var selectedConversation: Conversation?
@@ -67,7 +66,6 @@ struct ContentView: View {
             detailZStack
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar(removing: .sidebarToggle)
         .frame(minWidth: 1200, minHeight: 800)
         .modifier(ContentViewEventHandlers(
             selection: $selection,
@@ -77,7 +75,6 @@ struct ContentView: View {
             writePanelPrompt: $writePanelPrompt,
             showSearch: $showSearch,
             showCaptureOverlay: $showCaptureOverlay,
-            showBoardExportSheet: $showBoardExportSheet,
             showItemExportSheet: $showItemExportSheet,
             showChatPanel: $showChatPanel,
             selectedConversation: $selectedConversation,
@@ -114,49 +111,41 @@ struct ContentView: View {
 
     private var mainContentArea: some View {
         HStack(spacing: 0) {
-            // detailContent always fills the full remaining width so that
-            // LazyVGrid / LazyVStack layouts never reflow when the write
-            // panel appears. The write panel overlays on top as a ZStack.
-            ZStack(alignment: .trailing) {
-                detailContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            detailContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                writePanelOverlay
-            }
+            writePanelSection
 
             sidePanel
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                if openedItem != nil {
+            if openedItem != nil {
+                ToolbarItem(placement: .navigation) {
                     Button {
                         openedItem = nil
                     } label: {
                         Label("Back", systemImage: "chevron.left")
                     }
                     .help("Back to list")
-                } else {
-                    Button {
-                        withAnimation {
-                            if columnVisibility == .detailOnly {
-                                columnVisibility = .automatic
-                            } else {
-                                columnVisibility = .detailOnly
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                    }
-                    .help("Toggle Sidebar")
                 }
             }
-            ToolbarItem(placement: .status) {
-                SyncStatusView(syncService: syncService)
-            }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    if openedItem != nil {
+                        NotificationCenter.default.post(name: .groveOpenReflectMode, object: nil)
+                    } else {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            writePanelPrompt = nil
+                            showWritePanel.toggle()
+                        }
+                    }
+                } label: {
+                    Image(systemName: openedItem != nil
+                        ? "square.and.pencil"
+                        : (showWritePanel ? "square.and.pencil.circle.fill" : "square.and.pencil"))
+                }
+                .help(openedItem != nil ? "Reflect on this item" : showWritePanel ? "Close Write Panel" : "Write a note")
                 chatToolbarButton
-            }
-            ToolbarItem(placement: .primaryAction) {
                 inspectorToolbarButton
             }
         }
@@ -266,26 +255,24 @@ struct ContentView: View {
             }
     }
 
-    // Write panel as a ZStack overlay — does NOT change detailContent width,
-    // so grid/list layouts never reflow and gesture hit areas stay correct.
+    // Write panel as an HStack sibling — takes real horizontal space so
+    // the main content area shrinks when the panel is open.
     @ViewBuilder
-    private var writePanelOverlay: some View {
+    private var writePanelSection: some View {
         if showWritePanel {
-            HStack(spacing: 0) {
-                draggableDivider(width: $writePanelWidth, min: 360, max: 700)
-                NoteWriterOverlayView(
-                    isPresented: $showWritePanel,
-                    currentBoardID: currentBoardID,
-                    prompt: writePanelPrompt,
-                    editingItem: writePanelEditItem,
-                    panelMode: true
-                ) { note in
-                    writePanelPrompt = nil
-                    writePanelEditItem = nil
-                    selectedItem = note
-                }
-                .frame(width: writePanelWidth)
+            draggableDivider(width: $writePanelWidth, min: 360, max: 700)
+            NoteWriterOverlayView(
+                isPresented: $showWritePanel,
+                currentBoardID: currentBoardID,
+                prompt: writePanelPrompt,
+                editingItem: writePanelEditItem,
+                panelMode: true
+            ) { note in
+                writePanelPrompt = nil
+                writePanelEditItem = nil
+                selectedItem = note
             }
+            .frame(width: writePanelWidth)
             .transition(.move(edge: .trailing))
             .onChange(of: showWritePanel) {
                 if !showWritePanel {
@@ -718,24 +705,17 @@ struct InspectorPanelView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal)
 
-                if !item.isResurfacingPaused {
-                    if let nextDate = item.nextResurfaceDate {
-                        HStack(spacing: 4) {
-                            Image(systemName: item.isResurfacingOverdue ? "exclamationmark.circle" : "calendar.badge.clock")
-                                .font(.groveBadge)
-                                .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
-                            Text(item.isResurfacingOverdue ? "Due for review" : "Next review: \(nextDate.formatted(date: .abbreviated, time: .omitted))")
-                                .font(.groveMeta)
-                                .fontWeight(item.isResurfacingOverdue ? .semibold : .regular)
-                                .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
-                        }
-                        .padding(.horizontal)
+                if let nextDate = item.nextResurfaceDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: item.isResurfacingOverdue ? "exclamationmark.circle" : "calendar.badge.clock")
+                            .font(.groveBadge)
+                            .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
+                        Text(item.isResurfacingOverdue ? "Due for review" : "Next review: \(nextDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.groveMeta)
+                            .fontWeight(item.isResurfacingOverdue ? .semibold : .regular)
+                            .foregroundStyle(item.isResurfacingOverdue ? Color.textPrimary : Color.textSecondary)
                     }
-                } else {
-                    Text("Revisit reminders paused.")
-                        .font(.groveBodySmall)
-                        .foregroundStyle(Color.textTertiary)
-                        .padding(.horizontal)
+                    .padding(.horizontal)
                 }
             } else {
                 Text("Add notes or connections to enable review reminders.")
@@ -849,7 +829,6 @@ struct ContentViewEventHandlers: ViewModifier {
     @Binding var writePanelPrompt: String?
     @Binding var showSearch: Bool
     @Binding var showCaptureOverlay: Bool
-    @Binding var showBoardExportSheet: Bool
     @Binding var showItemExportSheet: Bool
     @Binding var showChatPanel: Bool
     @Binding var selectedConversation: Conversation?
@@ -879,7 +858,6 @@ struct ContentViewEventHandlers: ViewModifier {
                 writePanelPrompt: $writePanelPrompt,
                 showSearch: $showSearch,
                 showCaptureOverlay: $showCaptureOverlay,
-                showBoardExportSheet: $showBoardExportSheet,
                 showItemExportSheet: $showItemExportSheet,
                 showChatPanel: $showChatPanel,
                 selectedConversation: $selectedConversation,
@@ -904,7 +882,6 @@ struct ContentViewNotificationHandlers: ViewModifier {
     @Binding var writePanelPrompt: String?
     @Binding var showSearch: Bool
     @Binding var showCaptureOverlay: Bool
-    @Binding var showBoardExportSheet: Bool
     @Binding var showItemExportSheet: Bool
     @Binding var showChatPanel: Bool
     @Binding var selectedConversation: Conversation?
@@ -958,10 +935,6 @@ struct ContentViewNotificationHandlers: ViewModifier {
                     selection = .board(boards[index - 1].id)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .groveExportBoard)) { _ in
-                if searchScopeBoard != nil { showBoardExportSheet = true }
-            }
-
         return step1
             .onReceive(NotificationCenter.default.publisher(for: .groveExportItem)) { _ in
                 if selectedItem != nil { showItemExportSheet = true }
@@ -1012,17 +985,9 @@ struct ContentViewNotificationHandlers: ViewModifier {
                 savedInspectorOverride = nil
                 savedChatPanel = nil
             }
-            .sheet(isPresented: $showBoardExportSheet) {
-                if let board = searchScopeBoard {
-                    let items = board.isSmart
-                        ? BoardViewModel.smartBoardItems(for: board, from: boards.flatMap(\.items))
-                        : board.items
-                    BoardExportSheet(board: board, items: items)
-                }
-            }
             .sheet(isPresented: $showItemExportSheet) {
                 if let item = selectedItem {
-                    ItemExportSheet(items: [item])
+                    ItemExportSheet(item: item)
                 }
             }
             .onAppear {
@@ -1137,4 +1102,3 @@ struct ContentViewNotificationHandlers: ViewModifier {
         withAnimation { showChatPanel = true }
     }
 }
-

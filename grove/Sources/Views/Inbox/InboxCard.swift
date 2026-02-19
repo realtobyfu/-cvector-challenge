@@ -100,7 +100,24 @@ struct InboxCard: View {
             }
 
             // Suggested board
-            if let suggestedBoard = item.metadata["suggestedBoard"], !suggestedBoard.isEmpty {
+            if let boardSuggestion = BoardSuggestionMetadata.decision(from: item) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.textSecondary)
+                    Text(boardSuggestion.mode == .existing ? "Suggested board:" : "Suggested new board:")
+                        .font(.groveBadge)
+                        .foregroundStyle(Color.textSecondary)
+                    Text(boardSuggestion.suggestedName)
+                        .font(.groveBadge)
+                        .fontWeight(.medium)
+                        .foregroundStyle(Color.textPrimary)
+                    Spacer(minLength: 0)
+                    Text(BoardSuggestionEngine.confidenceLabel(for: boardSuggestion.confidence))
+                        .font(.groveBadge)
+                        .foregroundStyle(Color.textTertiary)
+                }
+            } else if let suggestedBoard = item.metadata["suggestedBoard"], !suggestedBoard.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.right.circle")
                         .font(.system(size: 10))

@@ -19,9 +19,14 @@ struct DialecticalChatPanel: View {
     @State private var reflectionMessage: ChatMessage?
     @State private var reflectionConversation: Conversation?
     @State private var noteMessage: ChatMessage?
+    @State private var conversationToDelete: Conversation?
 
     private var activeConversation: Conversation? {
         selectedConversation
+    }
+
+    private var activeConversations: [Conversation] {
+        conversations.filter { !$0.isArchived }
     }
 
     var body: some View {
@@ -46,6 +51,26 @@ struct DialecticalChatPanel: View {
         .sheet(item: $noteMessage) { message in
             saveNoteSheet(for: message)
         }
+        .alert(
+            "Delete Conversation Permanently?",
+            isPresented: Binding(
+                get: { conversationToDelete != nil },
+                set: { if !$0 { conversationToDelete = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                conversationToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let conversation = conversationToDelete {
+                    deleteConversation(conversation)
+                }
+            }
+        } message: {
+            if let conversation = conversationToDelete {
+                Text("\"\(conversation.displayTitle)\" and \(conversation.messages.count) message(s) will be permanently deleted. This cannot be undone.")
+            }
+        }
     }
 
     // MARK: - Header
@@ -67,9 +92,7 @@ struct DialecticalChatPanel: View {
                     .lineLimit(1)
 
                 Button {
-                    conversation.isArchived = true
-                    selectedConversation = nil
-                    try? modelContext.save()
+                    archiveConversation(conversation)
                 } label: {
                     Image(systemName: "archivebox")
                         .font(.groveBody)
@@ -77,6 +100,16 @@ struct DialecticalChatPanel: View {
                 }
                 .buttonStyle(.plain)
                 .help("Archive conversation")
+
+                Button(role: .destructive) {
+                    conversationToDelete = conversation
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Delete conversation")
             }
 
             Button {
@@ -390,11 +423,11 @@ struct DialecticalChatPanel: View {
             .buttonStyle(.bordered)
             .controlSize(.regular)
 
-            if !conversations.filter({ !$0.isArchived }).isEmpty {
+            if !activeConversations.isEmpty {
                 Divider().padding(.horizontal, Spacing.xxl)
                 Text("Recent")
                     .sectionHeaderStyle()
-                ForEach(conversations.filter({ !$0.isArchived }).prefix(3)) { conv in
+                ForEach(activeConversations.prefix(3)) { conv in
                     Button {
                         selectedConversation = conv
                     } label: {
@@ -435,7 +468,7 @@ struct DialecticalChatPanel: View {
 
             Divider()
 
-            if conversations.filter({ !$0.isArchived }).isEmpty {
+            if activeConversations.isEmpty {
                 Text("No conversations yet.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textTertiary)
@@ -443,37 +476,50 @@ struct DialecticalChatPanel: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(conversations.filter({ !$0.isArchived })) { conv in
-                            Button {
-                                selectedConversation = conv
-                                showConversationList = false
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(conv.displayTitle)
-                                            .font(.groveBody)
-                                            .foregroundStyle(Color.textPrimary)
-                                            .lineLimit(1)
-                                        HStack(spacing: 4) {
-                                            Text(conv.trigger.rawValue)
-                                                .font(.groveBadge)
-                                                .foregroundStyle(Color.textTertiary)
-                                            Text(conv.updatedAt.formatted(date: .abbreviated, time: .shortened))
-                                                .font(.groveMeta)
-                                                .foregroundStyle(Color.textTertiary)
+                        ForEach(activeConversations) { conv in
+                            HStack(spacing: Spacing.xs) {
+                                Button {
+                                    selectedConversation = conv
+                                    showConversationList = false
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(conv.displayTitle)
+                                                .font(.groveBody)
+                                                .foregroundStyle(Color.textPrimary)
+                                                .lineLimit(1)
+                                            HStack(spacing: 4) {
+                                                Text(conv.trigger.rawValue)
+                                                    .font(.groveBadge)
+                                                    .foregroundStyle(Color.textTertiary)
+                                                Text(conv.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                                                    .font(.groveMeta)
+                                                    .foregroundStyle(Color.textTertiary)
+                                            }
                                         }
+                                        Spacer()
+                                        Text("\(conv.visibleMessages.count) msgs")
+                                            .font(.groveBadge)
+                                            .foregroundStyle(Color.textMuted)
                                     }
-                                    Spacer()
-                                    Text("\(conv.visibleMessages.count) msgs")
-                                        .font(.groveBadge)
+                                    .padding(.horizontal, Spacing.md)
+                                    .padding(.vertical, Spacing.sm)
+                                    .contentShape(Rectangle())
+                                    .selectedItemStyle(selectedConversation?.id == conv.id)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button(role: .destructive) {
+                                    conversationToDelete = conv
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.groveBodySmall)
                                         .foregroundStyle(Color.textMuted)
                                 }
-                                .padding(.horizontal, Spacing.md)
-                                .padding(.vertical, Spacing.sm)
-                                .contentShape(Rectangle())
-                                .selectedItemStyle(selectedConversation?.id == conv.id)
+                                .buttonStyle(.plain)
+                                .help("Delete conversation")
+                                .padding(.trailing, Spacing.sm)
                             }
-                            .buttonStyle(.plain)
                             Divider().padding(.leading, Spacing.md)
                         }
                     }
@@ -520,6 +566,24 @@ struct DialecticalChatPanel: View {
                 context: modelContext
             )
         }
+    }
+
+    private func archiveConversation(_ conversation: Conversation) {
+        conversation.isArchived = true
+        if selectedConversation?.id == conversation.id {
+            selectedConversation = nil
+        }
+        try? modelContext.save()
+    }
+
+    private func deleteConversation(_ conversation: Conversation) {
+        let nextConversation = activeConversations.first { $0.id != conversation.id }
+        if selectedConversation?.id == conversation.id {
+            selectedConversation = nextConversation
+        }
+        modelContext.delete(conversation)
+        try? modelContext.save()
+        conversationToDelete = nil
     }
 
     // MARK: - Save Note Sheet

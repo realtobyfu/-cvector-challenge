@@ -14,8 +14,9 @@ struct SidebarView: View {
     @State private var showNewCourseSheet = false
     @State private var boardToEdit: Board?
     @State private var boardToDelete: Board?
-    @State private var boardToExport: Board?
     @State private var courseToDelete: Course?
+    @State private var conversationToDelete: Conversation?
+    @State private var isConversationsCollapsed = false
 
     private var inboxCount: Int {
         allItems.filter { $0.status == .inbox }.count
@@ -58,27 +59,15 @@ struct SidebarView: View {
             Section {
                 ForEach(boards) { board in
                     Label {
-                        HStack(spacing: 6) {
-                            Text(board.title)
-                            if board.isSmart {
-                                Image(systemName: "gearshape.2")
-                                    .font(.groveBadge)
-                                    .foregroundStyle(Color.textSecondary)
-                                    .help("Smart Board — auto-populates by tag rules")
-                            }
-                        }
+                        Text(board.title)
                     } icon: {
-                        Image(systemName: board.isSmart ? "sparkles.rectangle.stack" : (board.icon ?? "folder"))
+                        Image(systemName: board.icon ?? "folder")
                             .foregroundStyle(board.color.map { Color(hex: $0) } ?? Color.textSecondary)
                     }
                     .tag(SidebarItem.board(board.id))
                     .contextMenu {
                         Button("Edit Board...") {
                             boardToEdit = board
-                        }
-                        Divider()
-                        Button("Export Board...") {
-                            boardToExport = board
                         }
                         Divider()
                         Button("Delete Board", role: .destructive) {
@@ -134,30 +123,72 @@ struct SidebarView: View {
 
             if !recentConversations.isEmpty {
                 Section {
-                    ForEach(recentConversations) { conv in
-                        Button {
-                            NotificationCenter.default.post(name: .groveOpenConversation, object: conv)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(conv.displayTitle)
-                                    .font(.groveBody)
-                                    .foregroundStyle(Color.textPrimary)
-                                    .lineLimit(1)
-                                Text(conv.updatedAt.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.groveMeta)
-                                    .foregroundStyle(Color.textTertiary)
+                    if !isConversationsCollapsed {
+                        ForEach(recentConversations) { conv in
+                            HStack(spacing: Spacing.xs) {
+                                Button {
+                                    NotificationCenter.default.post(name: .groveOpenConversation, object: conv)
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(conv.displayTitle)
+                                                .font(.groveBody)
+                                                .foregroundStyle(Color.textPrimary)
+                                                .lineLimit(1)
+                                            Text(conv.updatedAt.formatted(date: .abbreviated, time: .omitted))
+                                                .font(.groveMeta)
+                                                .foregroundStyle(Color.textTertiary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                Button(role: .destructive) {
+                                    conversationToDelete = conv
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.groveBodySmall)
+                                        .foregroundStyle(Color.textMuted)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Delete conversation")
                             }
+                            .listRowBackground(
+                                selectedConversation?.id == conv.id
+                                    ? Color.accentSelection.opacity(0.08)
+                                    : Color.clear
+                            )
                         }
-                        .buttonStyle(.plain)
-                        .listRowBackground(
-                            selectedConversation?.id == conv.id
-                                ? Color.accentSelection.opacity(0.08)
-                                : Color.clear
-                        )
                     }
                 } header: {
-                    Text("Conversations")
-                        .sectionHeaderStyle()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isConversationsCollapsed.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: Spacing.sm) {
+                            Image(systemName: isConversationsCollapsed ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Color.textMuted)
+                                .frame(width: 12)
+
+                            Text("Conversations")
+                                .sectionHeaderStyle()
+
+                            Text("\(recentConversations.count)")
+                                .font(.groveBadge)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.accentBadge)
+                                .foregroundStyle(Color.textPrimary)
+                                .clipShape(Capsule())
+
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -171,9 +202,6 @@ struct SidebarView: View {
             BoardEditorSheet(
                 onSave: { title, icon, color, nudgeFreq in
                     viewModel.createBoard(title: title, icon: icon, color: color, nudgeFrequencyHours: nudgeFreq)
-                },
-                onSaveSmart: { title, icon, color, tags, logic, nudgeFreq in
-                    viewModel.createSmartBoard(title: title, icon: icon, color: color, ruleTags: tags, logic: logic, nudgeFrequencyHours: nudgeFreq)
                 }
             )
         }
@@ -182,9 +210,6 @@ struct SidebarView: View {
                 board: board,
                 onSave: { title, icon, color, nudgeFreq in
                     viewModel.updateBoard(board, title: title, icon: icon, color: color, nudgeFrequencyHours: nudgeFreq)
-                },
-                onSaveSmart: { title, icon, color, tags, logic, nudgeFreq in
-                    viewModel.updateSmartBoard(board, title: title, icon: icon, color: color, ruleTags: tags, logic: logic, nudgeFrequencyHours: nudgeFreq)
                 }
             )
         }
@@ -242,8 +267,30 @@ struct SidebarView: View {
                 Text("Are you sure you want to delete \"\(course.title)\"? Lectures will not be deleted.")
             }
         }
-        .sheet(item: $boardToExport) { board in
-            BoardExportSheet(board: board, items: board.items)
+        .alert(
+            "Delete Conversation Permanently?",
+            isPresented: Binding(
+                get: { conversationToDelete != nil },
+                set: { if !$0 { conversationToDelete = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                conversationToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let conversation = conversationToDelete {
+                    if selectedConversation?.id == conversation.id {
+                        selectedConversation = nil
+                    }
+                    modelContext.delete(conversation)
+                    try? modelContext.save()
+                }
+                conversationToDelete = nil
+            }
+        } message: {
+            if let conversation = conversationToDelete {
+                Text("\"\(conversation.displayTitle)\" and \(conversation.messages.count) message(s) will be permanently deleted. This cannot be undone.")
+            }
         }
     }
 }
