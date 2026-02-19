@@ -55,4 +55,19 @@ final class Conversation {
     var nextPosition: Int {
         (messages.map(\.position).max() ?? -1) + 1
     }
+
+    var displayTitle: String {
+        guard title == "New Conversation" else { return title }
+        if let boardName = board?.title { return "\(boardName) Discussion" }
+        switch trigger {
+        case .contradictionDetected: return "Exploring a Contradiction"
+        case .knowledgeGap:          return "Exploring a Knowledge Gap"
+        case .staleItems:            return "Revisiting Old Items"
+        case .periodicReflection:    return "Periodic Reflection"
+        case .userInitiated:         break
+        }
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, h:mm a"
+        return "Conversation – \(f.string(from: createdAt))"
+    }
 }

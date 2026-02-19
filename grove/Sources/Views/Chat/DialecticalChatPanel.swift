@@ -61,7 +61,7 @@ struct DialecticalChatPanel: View {
             Spacer()
 
             if let conversation = activeConversation {
-                Text(conversation.title)
+                Text(conversation.displayTitle)
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
@@ -400,7 +400,7 @@ struct DialecticalChatPanel: View {
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(conv.title)
+                                Text(conv.displayTitle)
                                     .font(.groveBody)
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(1)
@@ -450,7 +450,7 @@ struct DialecticalChatPanel: View {
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(conv.title)
+                                        Text(conv.displayTitle)
                                             .font(.groveBody)
                                             .foregroundStyle(Color.textPrimary)
                                             .lineLimit(1)
@@ -471,6 +471,7 @@ struct DialecticalChatPanel: View {
                                 .padding(.horizontal, Spacing.md)
                                 .padding(.vertical, Spacing.sm)
                                 .contentShape(Rectangle())
+                                .selectedItemStyle(selectedConversation?.id == conv.id)
                             }
                             .buttonStyle(.plain)
                             Divider().padding(.leading, Spacing.md)

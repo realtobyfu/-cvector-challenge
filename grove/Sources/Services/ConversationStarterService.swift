@@ -12,9 +12,9 @@ import Observation
 
 // MARK: - ConversationStarterService
 
-/// Generates 2-3 contextual conversation starters for the HomeView prompt bubbles.
+/// Generates 3-5 contextual conversation starters for the HomeView prompt bubbles.
 /// Uses a single LLM call with heuristic fallback when LLM is unavailable.
-/// Results are cached in memory for the lifetime of the app launch.
+/// Results are persisted to UserDefaults (TTL: 8 hours) so they appear instantly on relaunch.
 @MainActor @Observable final class ConversationStarterService: ConversationStarterServiceProtocol {
 
     private(set) var bubbles: [PromptBubble] = []
@@ -27,14 +27,29 @@ import Observation
 
     private let provider: LLMProvider
 
+    // MARK: - Disk Cache
+
+    private struct CachedBubble: Codable {
+        let prompt: String
+        let label: String
+        let clusterTag: String?
+        let clusterItemIDs: [UUID]
+    }
+
+    private static let cacheKey = "grove.conversationStarters"
+    private static let cacheTTLSeconds: TimeInterval = 8 * 3600  // 8 hours
+
     init(provider: LLMProvider = LLMServiceConfig.makeProvider()) {
         self.provider = provider
+        if let cached = Self.loadCachedBubbles() {
+            self.bubbles = cached
+        }
     }
 
     // MARK: - Public API
 
     /// Refreshes the prompt bubbles if not already loaded for this launch.
-    /// Pass in the full item list from the SwiftData query.
+    /// Cached bubbles are shown immediately (from init); this replaces them with fresh ones.
     func refresh(items: [Item]) async {
         guard !hasLoaded else { return }
         hasLoaded = true
@@ -44,8 +59,13 @@ import Observation
         // Attempt LLM generation, fall back to heuristics on failure
         if let llmBubbles = await generateViaLLM(context: context) {
             bubbles = llmBubbles
+            Self.saveCachedBubbles(llmBubbles)
         } else {
-            bubbles = buildHeuristics(context: context)
+            let heuristics = buildHeuristics(context: context)
+            if !heuristics.isEmpty {
+                bubbles = heuristics
+                Self.saveCachedBubbles(heuristics)
+            }
         }
     }
 
@@ -138,7 +158,7 @@ import Observation
 
         let systemPrompt = """
         You are a philosophical thinking partner that helps users reflect on their knowledge base.
-        Given context about a user's recent notes, stale items, and contradictions, generate 2-3 engaging conversation starters.
+        Given context about a user's recent notes, stale items, and contradictions, generate 3-5 engaging conversation starters.
 
         Rules:
         - Each starter is a single, thought-provoking question or prompt (1-2 sentences)
@@ -211,7 +231,7 @@ import Observation
             return PromptBubble(prompt: prompt, label: label)
         }
 
-        return parsed.isEmpty ? nil : Array(parsed.prefix(3))
+        return parsed.isEmpty ? nil : Array(parsed.prefix(5))
     }
 
     // MARK: - Heuristic Fallback
@@ -262,6 +282,29 @@ import Observation
             ))
         }
 
-        return Array(bubbles.prefix(3))
+        return Array(bubbles.prefix(5))
+    }
+
+    // MARK: - Cache Helpers
+
+    private static func saveCachedBubbles(_ bubbles: [PromptBubble]) {
+        let encoded = bubbles.map {
+            CachedBubble(prompt: $0.prompt, label: $0.label, clusterTag: $0.clusterTag, clusterItemIDs: $0.clusterItemIDs)
+        }
+        guard let data = try? JSONEncoder().encode(encoded) else { return }
+        let entry: [String: Any] = ["data": data, "timestamp": Date().timeIntervalSince1970]
+        UserDefaults.standard.set(entry, forKey: cacheKey)
+    }
+
+    private static func loadCachedBubbles() -> [PromptBubble]? {
+        guard let entry = UserDefaults.standard.dictionary(forKey: cacheKey),
+              let data = entry["data"] as? Data,
+              let timestamp = entry["timestamp"] as? TimeInterval else { return nil }
+
+        let age = Date().timeIntervalSince1970 - timestamp
+        guard age < cacheTTLSeconds else { return nil }
+
+        guard let cached = try? JSONDecoder().decode([CachedBubble].self, from: data) else { return nil }
+        return cached.map { PromptBubble(prompt: $0.prompt, label: $0.label, clusterTag: $0.clusterTag, clusterItemIDs: $0.clusterItemIDs) }
     }
 }

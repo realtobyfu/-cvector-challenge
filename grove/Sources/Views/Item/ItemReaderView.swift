@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AVKit
+import WebKit
 
 struct ItemReaderView: View {
     @Bindable var item: Item
@@ -18,6 +19,8 @@ struct ItemReaderView: View {
     @State private var selectedHighlightText: String?
     // Drag reordering state
     @State private var draggingBlock: ReflectionBlock?
+    // Web article reading mode (activated by clicking URL link)
+    @State private var showArticleWebView = false
     // Delete confirmation
     @State private var blockToDelete: ReflectionBlock?
     @State private var showDeleteConfirmation = false
@@ -32,7 +35,7 @@ struct ItemReaderView: View {
     @State private var isEditingSummary = false
     @State private var editableSummary = ""
     // Draggable split
-    @State private var reflectionPanelWidth: CGFloat = 380
+    @State private var reflectionPanelWidth: CGFloat = 0
 
     private var sortedReflections: [ReflectionBlock] {
         item.reflections.sorted { $0.position < $1.position }
@@ -42,34 +45,46 @@ struct ItemReaderView: View {
         item.type == .video && localVideoURL != nil
     }
 
+    /// URL that can be loaded in the in-app WebView (article items only, not local video).
+    private var articleURL: URL? {
+        guard item.type == .article,
+              item.metadata["videoLocalFile"] != "true",
+              let urlStr = item.sourceURL else { return nil }
+        return URL(string: urlStr)
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             if showReflectionEditor {
-                // Split mode: source left, editor right
+                // Split-pane: source/article left, reflection editor right
                 GeometryReader { geo in
                     let minPanel: CGFloat = 280
-                    let maxPanel = max(minPanel, geo.size.width * 0.6)
-                    let clampedWidth = min(max(reflectionPanelWidth, minPanel), maxPanel)
+                    let maxPanel = max(minPanel, geo.size.width * 0.72)
+                    let effectiveWidth = reflectionPanelWidth > 0 ? reflectionPanelWidth : geo.size.width * 0.6
+                    let clampedWidth = min(max(effectiveWidth, minPanel), maxPanel)
 
                     HStack(spacing: 0) {
-                        // Left: source content
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 0) {
-                                itemHeader
-
-                                if let thumbnailData = item.thumbnail {
-                                    CoverImageView(
-                                        imageData: thumbnailData,
-                                        height: 200,
-                                        showPlayOverlay: false,
-                                        cornerRadius: 0
-                                    )
-                                    .padding(.horizontal)
+                        // Left: article WebView OR scrollable content
+                        Group {
+                            if showArticleWebView, let url = articleURL {
+                                webViewPanel(url: url)
+                            } else {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        itemHeader
+                                        if let thumbnailData = item.thumbnail {
+                                            CoverImageView(
+                                                imageData: thumbnailData,
+                                                height: 200,
+                                                showPlayOverlay: false,
+                                                cornerRadius: 0
+                                            )
+                                            .padding(.horizontal)
+                                        }
+                                        Divider().padding(.horizontal)
+                                        sourceContent.padding()
+                                    }
                                 }
-
-                                Divider().padding(.horizontal)
-                                sourceContent
-                                    .padding()
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -85,11 +100,7 @@ struct ItemReaderView: View {
                                     .frame(width: 9)
                                     .contentShape(Rectangle())
                                     .onHover { hovering in
-                                        if hovering {
-                                            NSCursor.resizeLeftRight.push()
-                                        } else {
-                                            NSCursor.pop()
-                                        }
+                                        hovering ? NSCursor.resizeLeftRight.push() : NSCursor.pop()
                                     }
                                     .gesture(
                                         DragGesture(coordinateSpace: .global)
@@ -100,7 +111,7 @@ struct ItemReaderView: View {
                                     )
                             }
 
-                        // Right: editor panel
+                        // Right: reflection editor
                         reflectionEditorPanel
                             .frame(width: clampedWidth)
                             .frame(maxHeight: .infinity)
@@ -108,8 +119,15 @@ struct ItemReaderView: View {
                             .transition(.move(edge: .trailing))
                     }
                 }
+            } else if showArticleWebView, let url = articleURL {
+                // Full-width WebView reading mode.
+                // WKWebView must NOT be inside a SwiftUI ScrollView on macOS —
+                // the ScrollView intercepts mouse events, making the WebView non-interactive.
+                webViewPanel(url: url)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.bgPrimary)
             } else {
-                // Normal mode: full-width reader
+                // Normal mode: full scrollable reader with content + reflections + suggestions
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         itemHeader
@@ -141,9 +159,11 @@ struct ItemReaderView: View {
             backfillThumbnailIfNeeded()
         }
         .onChange(of: item.id) {
+            isEditingContent = false
             editingBlockID = nil
             selectedHighlightText = nil
             showReflectionEditor = false
+            showArticleWebView = false
             editorContent = ""
             editorHighlight = nil
             isEditingSummary = false
@@ -164,6 +184,69 @@ struct ItemReaderView: View {
             }
         } message: {
             Text("This reflection block will be permanently removed.")
+        }
+    }
+
+    // MARK: - Web View Panel
+    // Compact toolbar + full-height WKWebView. Must NOT be inside a SwiftUI ScrollView
+    // on macOS — the ScrollView intercepts mouse/scroll events, making WebView non-interactive.
+
+    @ViewBuilder
+    private func webViewPanel(url: URL) -> some View {
+        VStack(spacing: 0) {
+            // Slim navigation bar
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { showArticleWebView = false }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .medium))
+                        Text("Overview")
+                            .font(.groveMeta)
+                    }
+                    .foregroundStyle(Color.textSecondary)
+                }
+                .buttonStyle(.plain)
+
+                Divider().frame(height: 12)
+
+                Text(url.host ?? url.absoluteString)
+                    .font(.groveMeta)
+                    .foregroundStyle(Color.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer()
+
+                Button {
+                    openReflectionEditor(type: .keyInsight, content: "", highlight: nil)
+                } label: {
+                    Label("Reflect", systemImage: "square.and.pencil")
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Open reflection panel")
+
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Open in Browser")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.bgCard)
+
+            Divider()
+
+            ArticleWebView(url: url)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -273,6 +356,23 @@ struct ItemReaderView: View {
                             .truncationMode(.head)
                     }
                     .foregroundStyle(Color.textSecondary)
+                } else if articleURL != nil {
+                    // Article URL — clicking opens the in-app WebView reader
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { showArticleWebView = true }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.groveMeta)
+                            Text(sourceURL)
+                                .font(.groveMeta)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .foregroundStyle(Color.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Read in App")
                 } else {
                     Link(destination: URL(string: sourceURL) ?? URL(string: "about:blank")!) {
                         HStack(spacing: 4) {
@@ -519,7 +619,7 @@ struct ItemReaderView: View {
                 minHeight: 200
             )
         } else if let content = item.content, !content.isEmpty {
-            // AI Overview label
+            // Notes, AI-overview articles, or any item with stored content.
             if item.metadata["hasLLMOverview"] == "true" {
                 HStack(spacing: 4) {
                     Image(systemName: "sparkles")
@@ -1078,6 +1178,18 @@ struct SelectableMarkdownView: NSViewRepresentable {
         textView.delegate = nil
         updateTextView(textView)
         textView.delegate = context.coordinator
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
+        guard let textView = nsView.documentView as? NSTextView,
+              let storage = textView.textStorage,
+              storage.length > 0 else { return nil }
+        let width = proposal.width ?? 400
+        let boundingRect = storage.boundingRect(
+            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        return CGSize(width: width, height: ceil(boundingRect.height) + 8)
     }
 
     private func updateTextView(_ textView: NSTextView) {

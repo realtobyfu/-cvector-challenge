@@ -16,9 +16,13 @@ extension Notification.Name {
     static let groveStartCheckIn = Notification.Name("groveStartCheckIn")
     static let groveEnterFocusMode = Notification.Name("groveEnterFocusMode")
     static let groveExitFocusMode = Notification.Name("groveExitFocusMode")
+    /// Object: String — the writing prompt to display at the top of NoteWriterOverlayView
+    static let groveNewNoteWithPrompt = Notification.Name("groveNewNoteWithPrompt")
     /// Object: String — the prompt text to pre-fill as the first user message
     /// userInfo["seedItemIDs"]: [UUID] — optional item IDs to seed the conversation context
     static let groveStartConversationWithPrompt = Notification.Name("groveStartConversationWithPrompt")
     /// Object: Item — the item to anchor the conversation to; opens Dialectics with a pre-generated opening message
     static let groveDiscussItem = Notification.Name("groveDiscussItem")
+    /// Object: String — prompt shown as an assistant message; user types first reply
+    static let groveStartDialecticWithDisplayPrompt = Notification.Name("groveStartDialecticWithDisplayPrompt")
 }

@@ -112,33 +112,23 @@ final class AutoTagService: AutoTagServiceProtocol {
 
             let boardDescriptorAll = FetchDescriptor<Board>()
             let allBoards = (try? context.fetch(boardDescriptorAll)) ?? []
-            let matchedBoard = allBoards.first(where: {
-                $0.title.localizedCaseInsensitiveCompare(suggestedBoard) == .orderedSame
-            })
 
-            if let board = matchedBoard {
-                // Existing board — assign directly (high confidence match)
-                if !item.boards.contains(where: { $0.id == board.id }) {
-                    item.boards.append(board)
-                }
-            } else {
-                // No matching board — store the suggestion and notify UI to prompt the user
-                let isColdStart = allBoards.isEmpty
-                item.metadata["pendingBoardSuggestion"] = suggestedBoard
-                try? context.save()
+            // Always suggest — never silently assign to an existing board
+            let isColdStart = allBoards.isEmpty
+            item.metadata["pendingBoardSuggestion"] = suggestedBoard
+            try? context.save()
 
-                let itemID = item.id
-                NotificationCenter.default.post(
-                    name: .groveNewBoardSuggestion,
-                    object: nil,
-                    userInfo: [
-                        "itemID": itemID,
-                        "boardName": suggestedBoard,
-                        "isColdStart": isColdStart
-                    ]
-                )
-                return
-            }
+            let itemID = item.id
+            NotificationCenter.default.post(
+                name: .groveNewBoardSuggestion,
+                object: nil,
+                userInfo: [
+                    "itemID": itemID,
+                    "boardName": suggestedBoard,
+                    "isColdStart": isColdStart
+                ]
+            )
+            return
         }
 
         try? context.save()

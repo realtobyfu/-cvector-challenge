@@ -16,18 +16,10 @@ enum BoardViewMode: String, CaseIterable, Sendable {
 }
 
 enum BoardSortOption: String, CaseIterable, Sendable {
+    case manual = "Manual"
     case dateAdded = "Date Added"
     case title = "Title"
     case depthScore = "Depth"
-}
-
-// MARK: - Tag Cluster Model
-
-struct TagCluster: Identifiable {
-    let id = UUID()
-    let label: String
-    let tags: [Tag]
-    let items: [Item]
 }
 
 struct BoardDetailView: View {
@@ -37,15 +29,13 @@ struct BoardDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allItems: [Item]
     @State private var viewMode: BoardViewMode = .grid
-    @State private var sortOption: BoardSortOption = .dateAdded
-    @State private var showNewNoteSheet = false
-    @State private var selectedFilterTags: Set<UUID> = []
-    @State private var collapsedSections: Set<String> = []
+    @State private var sortOption: BoardSortOption = .manual
+    @State private var draggingItemID: UUID?
+@State private var selectedFilterTags: Set<UUID> = []
     @State private var showSynthesisSheet = false
+    @State private var showItemPicker = false
+    @State private var pickedItems: [Item] = []
     @State private var showExportSheet = false
-    @State private var clusterSynthesisItems: [Item]?
-    @State private var clusterSynthesisTitle: String = ""
-    @State private var showClusterSynthesisSheet = false
     @State private var itemToDelete: Item?
     @State private var isSuggestionsCollapsed = false
     @State private var boardSuggestions: [Suggestion] = []
@@ -61,12 +51,7 @@ struct BoardDetailView: View {
 
     /// Flat ordered list of all visible items for J/K navigation
     private var flatVisibleItems: [Item] {
-        var result: [Item] = []
-        for cluster in tagClusters {
-            guard !collapsedSections.contains(cluster.label) else { continue }
-            result.append(contentsOf: sortItems(cluster.items))
-        }
-        return result
+        sortedFilteredItems
     }
 
     // MARK: - Computed Properties
@@ -91,10 +76,6 @@ struct BoardDetailView: View {
 
     private var sortedFilteredItems: [Item] {
         sortItems(filteredItems)
-    }
-
-    private var tagClusters: [TagCluster] {
-        TagService.improvedClusters(from: filteredItems, allBoardTags: allBoardTags)
     }
 
     private var activeNudgesForBoard: [Nudge] {
@@ -194,12 +175,22 @@ struct BoardDetailView: View {
                 viewModePicker
             }
         }
-        .sheet(isPresented: $showNewNoteSheet) {
-            newNoteSheet
+.sheet(isPresented: $showItemPicker, onDismiss: {
+            if !pickedItems.isEmpty {
+                showSynthesisSheet = true
+            }
+        }) {
+            SynthesisItemPickerSheet(
+                items: filteredItems,
+                scopeTitle: board.title,
+                onConfirm: { items in
+                    pickedItems = items
+                }
+            )
         }
         .sheet(isPresented: $showSynthesisSheet) {
             SynthesisSheet(
-                items: filteredItems,
+                items: pickedItems,
                 scopeTitle: board.title,
                 board: board,
                 onCreated: { item in
@@ -211,19 +202,6 @@ struct BoardDetailView: View {
         .sheet(isPresented: $showExportSheet) {
             BoardExportSheet(board: board, items: effectiveItems)
         }
-        .sheet(isPresented: $showClusterSynthesisSheet) {
-            if let items = clusterSynthesisItems {
-                SynthesisSheet(
-                    items: items,
-                    scopeTitle: clusterSynthesisTitle,
-                    board: board,
-                    onCreated: { item in
-                        selectedItem = item
-                        openedItem = item
-                    }
-                )
-            }
-        }
         .background(boardKeyboardHandlers)
         .task {
             if boardSuggestions.isEmpty {
@@ -232,6 +210,9 @@ struct BoardDetailView: View {
         }
         .onChange(of: effectiveItems.count) {
             refreshBoardSuggestions()
+        }
+        .onChange(of: board.id, initial: true) {
+            sortOption = board.isSmart ? .dateAdded : .manual
         }
         .alert(
             "Delete Item",
@@ -339,7 +320,7 @@ struct BoardDetailView: View {
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 HStack {
-                    Text(suggestion.type == .nudge ? (suggestion.nudge?.type.iconName ?? "NUDGE").uppercased() : suggestion.type.rawValue)
+                    Text(suggestion.type == .nudge ? (suggestion.nudge?.type.actionLabel ?? "NUDGE").uppercased() : suggestion.type.rawValue)
                         .font(.groveBadge)
                         .tracking(0.8)
                         .foregroundStyle(Color.textSecondary)
@@ -400,7 +381,12 @@ struct BoardDetailView: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            if suggestion.nudge == nil, let item = suggestion.item {
+            if suggestion.nudge != nil {
+                // nudge cards have their own Button — do nothing on background tap
+            } else if suggestion.type == .reflect, let item = suggestion.item {
+                let prompt = "What are your key thoughts on \"\(item.title)\"?"
+                NotificationCenter.default.post(name: .groveNewNoteWithPrompt, object: prompt)
+            } else if let item = suggestion.item {
                 openedItem = item
                 selectedItem = item
             }
@@ -516,141 +502,93 @@ struct BoardDetailView: View {
     // MARK: - Grid View
 
     private var gridView: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(tagClusters) { cluster in
-                    clusterSection(cluster: cluster, viewMode: .grid)
+        let canReorder = sortOption == .manual && !board.isSmart
+        return ScrollView {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 12)],
+                spacing: 12
+            ) {
+                ForEach(sortedFilteredItems) { item in
+                    ItemCardView(item: item, showTags: false, onReadInApp: {
+                        openedItem = item
+                        selectedItem = item
+                    })
+                    .opacity(canReorder && draggingItemID == item.id ? 0.4 : 1)
+                    .onTapGesture(count: 2) {
+                        openedItem = item
+                        selectedItem = item
+                    }
+                    .onTapGesture(count: 1) {
+                        selectedItem = item
+                    }
+                    .selectedItemStyle(selectedItem?.id == item.id)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .contextMenu { itemContextMenu(for: item) }
+                    .onDrag {
+                        guard canReorder else { return NSItemProvider() }
+                        draggingItemID = item.id
+                        return NSItemProvider(object: item.id.uuidString as NSString)
+                    }
+                    .onDrop(of: [.text], delegate: BoardGridDropDelegate(
+                        targetItemID: item.id,
+                        draggingItemID: $draggingItemID,
+                        isEnabled: canReorder,
+                        onReorder: moveGridItem
+                    ))
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: sortedFilteredItems.map(\.id))
             .padding()
         }
     }
 
     // MARK: - List View
 
-    private var listView: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(tagClusters) { cluster in
-                    clusterSection(cluster: cluster, viewMode: .list)
-                }
-            }
-            .padding()
-        }
-    }
-
-    // MARK: - Cluster Section
-
     @ViewBuilder
-    private func clusterSection(cluster: TagCluster, viewMode: BoardViewMode) -> some View {
-        let isCollapsed = collapsedSections.contains(cluster.label)
-        let sortedItems = sortItems(cluster.items)
-
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            // Section header
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if isCollapsed {
-                        collapsedSections.remove(cluster.label)
-                    } else {
-                        collapsedSections.insert(cluster.label)
-                    }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                        .font(.groveBadge)
-                        .foregroundStyle(Color.textMuted)
-                        .frame(width: 12)
-
-                    Text(cluster.label)
-                        .sectionHeaderStyle()
-
-                    Text("\(cluster.items.count)")
-                        .font(.groveBadge)
-                        .foregroundStyle(Color.textSecondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.accentBadge)
-                        .clipShape(Capsule())
-
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // Cluster-level synthesize button
-            if cluster.items.count >= 2 {
-                Button {
-                    clusterSynthesisItems = cluster.items
-                    clusterSynthesisTitle = cluster.label
-                    showClusterSynthesisSheet = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 9))
-                        Text("Synthesize")
-                            .font(.groveBadge)
-                    }
-                    .foregroundStyle(Color.textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.accentBadge)
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .help("Generate synthesis from this cluster")
-            }
-
-            // Section content
-            if !isCollapsed {
-                switch viewMode {
-                case .grid:
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 12)],
-                        spacing: 12
-                    ) {
-                        ForEach(sortedItems) { item in
-                            ItemCardView(item: item)
-                                .onTapGesture(count: 2) {
-                                    openedItem = item
-                                    selectedItem = item
-                                }
-                                .onTapGesture(count: 1) {
-                                    selectedItem = item
-                                }
-                                .selectedItemStyle(selectedItem?.id == item.id)
-                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                                .contextMenu { itemContextMenu(for: item) }
+    private var listView: some View {
+        if sortOption == .manual && !board.isSmart {
+            List {
+                ForEach(sortedFilteredItems) { item in
+                    listRow(item: item)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            openedItem = item
+                            selectedItem = item
                         }
-                    }
-                    .animation(.easeInOut(duration: 0.2), value: sortedItems.map(\.id))
-
-                case .list:
-                    VStack(spacing: 0) {
-                        ForEach(sortedItems) { item in
-                            listRow(item: item)
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    openedItem = item
-                                    selectedItem = item
-                                }
-                                .onTapGesture(count: 1) {
-                                    selectedItem = item
-                                }
-                                .selectedItemStyle(selectedItem?.id == item.id)
-                                .transition(.opacity.combined(with: .slide))
-                                .contextMenu { itemContextMenu(for: item) }
+                        .onTapGesture(count: 1) {
+                            selectedItem = item
                         }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.borderPrimary, lineWidth: 1)
-                    )
-                    .animation(.easeInOut(duration: 0.2), value: sortedItems.map(\.id))
+                        .selectedItemStyle(selectedItem?.id == item.id)
+                        .contextMenu { itemContextMenu(for: item) }
                 }
+                .onMove(perform: moveListItems)
+            }
+            .listStyle(.plain)
+        } else {
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(sortedFilteredItems) { item in
+                        listRow(item: item)
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) {
+                                openedItem = item
+                                selectedItem = item
+                            }
+                            .onTapGesture(count: 1) {
+                                selectedItem = item
+                            }
+                            .selectedItemStyle(selectedItem?.id == item.id)
+                            .transition(.opacity.combined(with: .slide))
+                            .contextMenu { itemContextMenu(for: item) }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.borderPrimary, lineWidth: 1)
+                )
+                .animation(.easeInOut(duration: 0.2), value: sortedFilteredItems.map(\.id))
+                .padding()
             }
         }
     }
@@ -716,7 +654,8 @@ struct BoardDetailView: View {
 
     private var synthesisButton: some View {
         Button {
-            showSynthesisSheet = true
+            pickedItems = []
+            showItemPicker = true
         } label: {
             Label("Synthesize", systemImage: "sparkles")
         }
@@ -736,7 +675,7 @@ struct BoardDetailView: View {
 
     private var addNoteButton: some View {
         Button {
-            showNewNoteSheet = true
+            NotificationCenter.default.post(name: .groveNewNote, object: nil)
         } label: {
             Label("New Note", systemImage: "square.and.pencil")
         }
@@ -746,13 +685,15 @@ struct BoardDetailView: View {
     private var sortPicker: some View {
         Menu {
             ForEach(BoardSortOption.allCases, id: \.self) { option in
-                Button {
-                    sortOption = option
-                } label: {
-                    HStack {
-                        Text(option.rawValue)
-                        if sortOption == option {
-                            Image(systemName: "checkmark")
+                if option == .manual && board.isSmart { EmptyView() } else {
+                    Button {
+                        sortOption = option
+                    } label: {
+                        HStack {
+                            Text(option.rawValue)
+                            if sortOption == option {
+                                Image(systemName: "checkmark")
+                            }
                         }
                     }
                 }
@@ -773,17 +714,6 @@ struct BoardDetailView: View {
         .pickerStyle(.segmented)
         .frame(width: 80)
         .help("Toggle grid/list view")
-    }
-
-    // MARK: - New Note Sheet
-
-    private var newNoteSheet: some View {
-        NewNoteSheet { title, content in
-            let viewModel = ItemViewModel(modelContext: modelContext)
-            let note = viewModel.createNote(title: title)
-            note.content = content
-            viewModel.assignToBoard(note, board: board)
-        }
     }
 
     // MARK: - Video Drag-and-Drop
@@ -819,7 +749,14 @@ struct BoardDetailView: View {
             Label("Open", systemImage: "doc.text")
         }
 
-        if let urlString = item.sourceURL, let url = URL(string: urlString) {
+        if let urlString = item.sourceURL, let url = URL(string: urlString),
+           item.metadata["videoLocalFile"] != "true" {
+            Button {
+                openedItem = item
+                selectedItem = item
+            } label: {
+                Label("Read in App", systemImage: "doc.text.magnifyingglass")
+            }
             Button {
                 NSWorkspace.shared.open(url)
             } label: {
@@ -845,11 +782,14 @@ struct BoardDetailView: View {
         }
     }
 
-    // MARK: - Clustering
-    // Clustering now uses TagService.improvedClusters() which groups by co-occurrence + similarity
-
     private func sortItems(_ items: [Item]) -> [Item] {
         switch sortOption {
+        case .manual:
+            let order = board.manualOrder()
+            let orderedItems = order.compactMap { id in items.first(where: { $0.id == id }) }
+            let unorderedIDs = Set(items.map(\.id)).subtracting(Set(order))
+            let unordered = items.filter { unorderedIDs.contains($0.id) }
+            return orderedItems + unordered
         case .dateAdded:
             return items.sorted { $0.createdAt > $1.createdAt }
         case .title:
@@ -857,6 +797,60 @@ struct BoardDetailView: View {
         case .depthScore:
             return items.sorted { $0.depthScore > $1.depthScore }
         }
+    }
+
+    // MARK: - Reorder
+
+    private func moveGridItem(fromID: UUID, toID: UUID) {
+        guard !board.isSmart else { return }
+        var order = board.manualOrder()
+        let allIDs = board.items.map(\.id)
+        let known = Set(order)
+        order.append(contentsOf: allIDs.filter { !known.contains($0) })
+        guard let fromIndex = order.firstIndex(of: fromID),
+              let toIndex = order.firstIndex(of: toID),
+              fromIndex != toIndex else { return }
+        order.move(fromOffsets: IndexSet(integer: fromIndex),
+                   toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+        board.setManualOrder(order)
+        try? modelContext.save()
+    }
+
+    private func moveListItems(from source: IndexSet, to destination: Int) {
+        guard !board.isSmart else { return }
+        var order = board.manualOrder()
+        let allIDs = board.items.map(\.id)
+        let known = Set(order)
+        order.append(contentsOf: allIDs.filter { !known.contains($0) })
+        order.move(fromOffsets: source, toOffset: destination)
+        board.setManualOrder(order)
+        try? modelContext.save()
+    }
+}
+
+// MARK: - Grid Drop Delegate
+
+struct BoardGridDropDelegate: DropDelegate {
+    let targetItemID: UUID
+    @Binding var draggingItemID: UUID?
+    let isEnabled: Bool
+    let onReorder: (UUID, UUID) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingItemID = nil
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard isEnabled else { return DropProposal(operation: .forbidden) }
+        return DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard isEnabled,
+              let from = draggingItemID,
+              from != targetItemID else { return }
+        onReorder(from, targetItemID)
     }
 }
 

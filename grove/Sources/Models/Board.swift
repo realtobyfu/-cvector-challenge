@@ -33,6 +33,8 @@ final class Board {
     var smartRuleLogic: SmartRuleLogic
     /// Per-board nudge frequency in hours. 0 = use global default, -1 = disabled for this board.
     var nudgeFrequencyHours: Int
+    /// JSON-encoded [UUID] array for manual item ordering. Authoritative source for .manual sort order.
+    var itemOrderData: Data?
 
     var items: [Item]
     var smartRuleTags: [Tag]
@@ -48,7 +50,23 @@ final class Board {
         self.isSmart = false
         self.smartRuleLogic = .or
         self.nudgeFrequencyHours = 0
+        self.itemOrderData = nil
         self.items = []
         self.smartRuleTags = []
+    }
+}
+
+extension Board {
+    func manualOrder() -> [UUID] {
+        guard let data = itemOrderData,
+              let order = try? JSONDecoder().decode([UUID].self, from: data) else {
+            return items.map(\.id)
+        }
+        let validIDs = Set(items.map(\.id))
+        return order.filter { validIDs.contains($0) }
+    }
+
+    func setManualOrder(_ order: [UUID]) {
+        itemOrderData = try? JSONEncoder().encode(order)
     }
 }

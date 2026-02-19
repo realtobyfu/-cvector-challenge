@@ -17,7 +17,10 @@ struct ContentView: View {
     @State private var inspectorUserOverride: Bool?
     @State private var selectedItem: Item?
     @State private var openedItem: Item?
-    @State private var showNewNoteSheet = false
+    @State private var showWritePanel = false
+    @State private var writePanelPrompt: String? = nil
+    @State private var writePanelEditItem: Item? = nil
+    @State private var writePanelWidth: CGFloat = 480
     @State private var showSearch = false
     @State private var showCaptureOverlay = false
     @State private var nudgeEngine: NudgeEngine?
@@ -30,6 +33,7 @@ struct ContentView: View {
     @State private var savedInspectorOverride: Bool?
     @State private var savedChatPanel: Bool?
     @State private var chatPanelWidth: CGFloat = 380
+    @State private var inspectorWidth: CGFloat = 280
 
     private var isInspectorVisible: Bool {
         if let override = inspectorUserOverride {
@@ -58,16 +62,19 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView(selection: $selection)
+            SidebarView(selection: $selection, selectedConversation: $selectedConversation)
         } detail: {
             detailZStack
         }
+        .navigationSplitViewStyle(.balanced)
+        .toolbar(removing: .sidebarToggle)
         .frame(minWidth: 1200, minHeight: 800)
         .modifier(ContentViewEventHandlers(
             selection: $selection,
             selectedItem: $selectedItem,
             openedItem: $openedItem,
-            showNewNoteSheet: $showNewNoteSheet,
+            showWritePanel: $showWritePanel,
+            writePanelPrompt: $writePanelPrompt,
             showSearch: $showSearch,
             showCaptureOverlay: $showCaptureOverlay,
             showBoardExportSheet: $showBoardExportSheet,
@@ -85,6 +92,16 @@ struct ContentView: View {
             boards: boards,
             modelContext: modelContext
         ))
+        .onChange(of: openedItem) {
+            if let item = openedItem, item.type == .note {
+                writePanelEditItem = item
+                selectedItem = item
+                openedItem = nil
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showWritePanel = true
+                }
+            }
+        }
     }
 
     private var detailZStack: some View {
@@ -136,8 +153,6 @@ struct ContentView: View {
                 inspectorToolbarButton
             }
         }
-        .navigationSplitViewStyle(.balanced)
-        .toolbar(removing: .sidebarToggle)
     }
 
     private var chatToolbarButton: some View {
@@ -216,36 +231,60 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
-    private var rightPanel: some View {
-        if showChatPanel {
-            // Draggable divider for chat panel
-            Rectangle()
-                .fill(Color.borderPrimary)
-                .frame(width: 1)
-                .overlay {
-                    Rectangle()
-                        .fill(Color.clear)
-                        .frame(width: 9)
-                        .contentShape(Rectangle())
-                        .onHover { hovering in
-                                if hovering {
-                                    NSCursor.resizeLeftRight.push()
-                                } else {
-                                    NSCursor.pop()
+    private func draggableDivider(width: Binding<CGFloat>, min minWidth: CGFloat, max maxWidth: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.borderPrimary)
+            .frame(width: 1)
+            .overlay {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering {
+                            NSCursor.resizeLeftRight.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .gesture(
+                        DragGesture(coordinateSpace: .global)
+                            .onChanged { value in
+                                if let window = NSApp.keyWindow {
+                                    let newWidth = window.frame.width - value.location.x
+                                    width.wrappedValue = Swift.min(Swift.max(newWidth, minWidth), maxWidth)
                                 }
                             }
-                        .gesture(
-                            DragGesture(coordinateSpace: .global)
-                                .onChanged { value in
-                                    if let window = NSApp.keyWindow {
-                                        let windowWidth = window.frame.width
-                                        let newWidth = windowWidth - value.location.x
-                                        chatPanelWidth = min(max(newWidth, 300), windowWidth * 0.6)
-                                    }
-                                }
-                        )
+                    )
+            }
+    }
+
+    @ViewBuilder
+    private var rightPanel: some View {
+        if showWritePanel {
+            draggableDivider(width: $writePanelWidth, min: 360, max: 700)
+            NoteWriterOverlayView(
+                isPresented: $showWritePanel,
+                currentBoardID: currentBoardID,
+                prompt: writePanelPrompt,
+                editingItem: writePanelEditItem,
+                panelMode: true
+            ) { note in
+                writePanelPrompt = nil
+                writePanelEditItem = nil
+                selectedItem = note
+                // Do NOT set openedItem — list stays visible
+            }
+            .frame(width: writePanelWidth)
+            .transition(.move(edge: .trailing))
+            .onChange(of: showWritePanel) {
+                if !showWritePanel {
+                    writePanelPrompt = nil
+                    writePanelEditItem = nil
                 }
+            }
+        } else if showChatPanel {
+            draggableDivider(width: $chatPanelWidth, min: 300, max: .infinity)
             DialecticalChatPanel(
                 selectedConversation: $selectedConversation,
                 isVisible: $showChatPanel,
@@ -258,14 +297,14 @@ struct ContentView: View {
             .frame(width: chatPanelWidth)
             .transition(.move(edge: .trailing))
         } else if isInspectorVisible {
-            Divider()
+            draggableDivider(width: $inspectorWidth, min: 220, max: 480)
             if let selectedItem {
                 InspectorPanelView(item: selectedItem)
-                    .frame(width: 280)
+                    .frame(width: inspectorWidth)
                     .transition(.move(edge: .trailing))
             } else {
                 InspectorEmptyView()
-                    .frame(width: 280)
+                    .frame(width: inspectorWidth)
                     .transition(.move(edge: .trailing))
             }
         }
@@ -790,7 +829,8 @@ struct ContentViewEventHandlers: ViewModifier {
     @Binding var selection: SidebarItem?
     @Binding var selectedItem: Item?
     @Binding var openedItem: Item?
-    @Binding var showNewNoteSheet: Bool
+    @Binding var showWritePanel: Bool
+    @Binding var writePanelPrompt: String?
     @Binding var showSearch: Bool
     @Binding var showCaptureOverlay: Bool
     @Binding var showBoardExportSheet: Bool
@@ -818,20 +858,9 @@ struct ContentViewEventHandlers: ViewModifier {
             .onChange(of: selectedItem) {
                 inspectorUserOverride = nil
             }
-            .sheet(isPresented: $showNewNoteSheet) {
-                NewNoteSheet { title, noteContent in
-                    let viewModel = ItemViewModel(modelContext: modelContext)
-                    let note = viewModel.createNote(title: title)
-                    note.content = noteContent
-                    if case .board(let boardID) = selection,
-                       let board = boards.first(where: { $0.id == boardID }) {
-                        viewModel.assignToBoard(note, board: board)
-                    }
-                    selectedItem = note
-                }
-            }
             .modifier(ContentViewNotificationHandlers(
-                showNewNoteSheet: $showNewNoteSheet,
+                showWritePanel: $showWritePanel,
+                writePanelPrompt: $writePanelPrompt,
                 showSearch: $showSearch,
                 showCaptureOverlay: $showCaptureOverlay,
                 showBoardExportSheet: $showBoardExportSheet,
@@ -855,7 +884,8 @@ struct ContentViewEventHandlers: ViewModifier {
 }
 
 struct ContentViewNotificationHandlers: ViewModifier {
-    @Binding var showNewNoteSheet: Bool
+    @Binding var showWritePanel: Bool
+    @Binding var writePanelPrompt: String?
     @Binding var showSearch: Bool
     @Binding var showCaptureOverlay: Bool
     @Binding var showBoardExportSheet: Bool
@@ -876,9 +906,18 @@ struct ContentViewNotificationHandlers: ViewModifier {
     let modelContext: ModelContext
 
     func body(content: Content) -> some View {
-        content
+        let step1 = content
             .onReceive(NotificationCenter.default.publisher(for: .groveNewNote)) { _ in
-                showNewNoteSheet = true
+                withAnimation(.easeOut(duration: 0.2)) {
+                    writePanelPrompt = nil
+                    showWritePanel = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveNewNoteWithPrompt)) { notification in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    writePanelPrompt = notification.object as? String
+                    showWritePanel = true
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .groveToggleSearch)) { _ in
                 withAnimation(.easeOut(duration: 0.2)) {
@@ -906,6 +945,8 @@ struct ContentViewNotificationHandlers: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .groveExportBoard)) { _ in
                 if searchScopeBoard != nil { showBoardExportSheet = true }
             }
+
+        return step1
             .onReceive(NotificationCenter.default.publisher(for: .groveExportItem)) { _ in
                 if selectedItem != nil { showItemExportSheet = true }
             }
@@ -930,6 +971,10 @@ struct ContentViewNotificationHandlers: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .groveDiscussItem)) { notification in
                 guard let item = notification.object as? Item else { return }
                 startDiscussion(item: item)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveStartDialecticWithDisplayPrompt)) { notification in
+                let prompt = notification.object as? String ?? ""
+                startDialecticWithDisplayPrompt(prompt)
             }
             .onReceive(NotificationCenter.default.publisher(for: .groveEnterFocusMode)) { _ in
                 savedColumnVisibility = columnVisibility
@@ -1048,6 +1093,30 @@ struct ContentViewNotificationHandlers: ViewModifier {
             try? modelContext.save()
         }
 
+        selectedConversation = conversation
+        withAnimation { showChatPanel = true }
+    }
+
+    private func startDialecticWithDisplayPrompt(_ prompt: String) {
+        let service = DialecticsService()
+        let conversation = service.startConversation(
+            trigger: .userInitiated,
+            seedItems: [],
+            board: nil,
+            context: modelContext
+        )
+        if !prompt.isEmpty {
+            let assistantMsg = ChatMessage(
+                role: .assistant,
+                content: prompt,
+                position: conversation.nextPosition
+            )
+            assistantMsg.conversation = conversation
+            conversation.messages.append(assistantMsg)
+            modelContext.insert(assistantMsg)
+            conversation.updatedAt = .now
+            try? modelContext.save()
+        }
         selectedConversation = conversation
         withAnimation { showChatPanel = true }
     }

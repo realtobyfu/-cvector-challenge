@@ -200,3 +200,17 @@ Implementation:
 - ConnectionSuggestionService.swift kept in codebase, not auto-invoked from any view
 - Existing Connection entities in InspectorView (manual connection management) remain untouched
 - Build passes with zero errors
+
+## "Read in App" + Reflection Writer UX Flow
+Status: PASS
+Date: 2026-02-18
+
+Implementation:
+- Created grove/Sources/Views/Item/ArticleWebView.swift — NSViewRepresentable wrapping WKWebView; intercepts link taps and opens them in the system browser (preventing navigation away from the article); accepts a URL, calls webView.load() on init and on URL change
+- Created grove/Sources/Services/ArticleReaderService.swift — ArticleReaderServiceProtocol stub for testability; ArticleReaderService.shared is a no-op placeholder for future server-side readability extraction
+- ItemCardView: added optional onReadInApp callback; .contextMenu on the CoverImageView thumbnail with "Read in App" (calls onReadInApp) and "Open in Browser" (NSWorkspace); added a "Read" pill button next to the domain badge in the badges row, shown only when onReadInApp is wired up
+- BoardDetailView: ItemCardView instances in gridView now pass onReadInApp: { openedItem = item; selectedItem = item }; "Read in App" added to itemContextMenu for URL items (alongside existing "Open in Browser")
+- ItemReaderView: added isURLOnlyItem and articleURL computed helpers; sourceContent extended with URL case — shows ArticleWebView(url: url).frame(maxWidth: .infinity, minHeight: 500) for items with sourceURL and no stored content; split-pane left side restructured: when isURLOnlyItem, uses a VStack with a shrink-wrapped header ScrollView + full-height ArticleWebView (maxHeight: .infinity) instead of the default ScrollView; non-URL items keep the existing layout unchanged
+- The existing split-pane reflection editor (right side) requires no changes — sourceContent (WebView) is already on the left, editor on the right
+- Ran tuist generate --no-open after adding new files
+- Build passes with zero errors

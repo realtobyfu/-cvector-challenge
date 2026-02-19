@@ -3,6 +3,7 @@ import SwiftData
 
 struct SidebarView: View {
     @Binding var selection: SidebarItem?
+    @Binding var selectedConversation: Conversation?
     @Environment(\.modelContext) private var modelContext
     @Query private var allItems: [Item]
     @Query(sort: \Board.sortOrder) private var boards: [Board]
@@ -138,7 +139,7 @@ struct SidebarView: View {
                             NotificationCenter.default.post(name: .groveOpenConversation, object: conv)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(conv.title)
+                                Text(conv.displayTitle)
                                     .font(.groveBody)
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(1)
@@ -148,6 +149,11 @@ struct SidebarView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(
+                            selectedConversation?.id == conv.id
+                                ? Color.accentSelection.opacity(0.08)
+                                : Color.clear
+                        )
                     }
                 } header: {
                     Text("Conversations")

@@ -11,6 +11,8 @@ struct TagDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var sortOrder: TagItemSort = .dateAdded
     @State private var showSynthesisSheet = false
+    @State private var showItemPicker = false
+    @State private var pickedItems: [Item] = []
 
     enum TagItemSort: String, CaseIterable {
         case dateAdded = "Date Added"
@@ -40,9 +42,22 @@ struct TagDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showItemPicker, onDismiss: {
+            if !pickedItems.isEmpty {
+                showSynthesisSheet = true
+            }
+        }) {
+            SynthesisItemPickerSheet(
+                items: sortedItems,
+                scopeTitle: "Tag: \(tag.name)",
+                onConfirm: { items in
+                    pickedItems = items
+                }
+            )
+        }
         .sheet(isPresented: $showSynthesisSheet) {
             SynthesisSheet(
-                items: tag.items,
+                items: pickedItems,
                 scopeTitle: "Tag: \(tag.name)",
                 board: nil,
                 onCreated: { item in
@@ -88,7 +103,8 @@ struct TagDetailView: View {
                 .frame(width: 130)
 
                 Button {
-                    showSynthesisSheet = true
+                    pickedItems = []
+                    showItemPicker = true
                 } label: {
                     Label("Synthesize", systemImage: "sparkles")
                 }

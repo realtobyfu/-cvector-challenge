@@ -21,6 +21,7 @@ struct LibraryView: View {
     @State private var filteredResults: [Item] = []
     @State private var isSearching = false
     @State private var showingRevisitFilter = false
+    @State private var itemToDelete: Item?
 
     // MARK: - Computed
 
@@ -76,6 +77,28 @@ struct LibraryView: View {
         }
         .onChange(of: allItems.count) { _, _ in
             scheduleSearch(query: searchQuery)
+        }
+        .alert(
+            "Delete Item",
+            isPresented: Binding(
+                get: { itemToDelete != nil },
+                set: { if !$0 { itemToDelete = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                itemToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let item = itemToDelete {
+                    if selectedItem?.id == item.id { selectedItem = nil }
+                    if openedItem?.id == item.id { openedItem = nil }
+                    modelContext.delete(item)
+                    try? modelContext.save()
+                }
+                itemToDelete = nil
+            }
+        } message: {
+            Text("\"\(itemToDelete?.title ?? "")\" will be permanently deleted.")
         }
     }
 
@@ -214,6 +237,10 @@ struct LibraryView: View {
                                     NotificationCenter.default.post(name: .groveDiscussItem, object: item)
                                 } label: {
                                     Label("Discuss", systemImage: "bubble.left.and.bubble.right")
+                                }
+                                Divider()
+                                Button("Delete Item", role: .destructive) {
+                                    itemToDelete = item
                                 }
                             }
                         Divider()
