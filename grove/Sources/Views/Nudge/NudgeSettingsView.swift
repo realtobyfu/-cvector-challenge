@@ -17,6 +17,7 @@ struct NudgeSettingsView: View {
     @State private var digestEnabled = NudgeSettings.digestEnabled
     @State private var digestDayOfWeek = NudgeSettings.digestDayOfWeek
     @State private var queueStats: ResurfacingService.QueueStats?
+    @State private var showAdvancedDetails = false
 
     private static let intervalOptions: [(label: String, value: Int)] = [
         ("Every 2 Hours", 2),
@@ -33,77 +34,33 @@ struct NudgeSettingsView: View {
                     .onChange(of: resurfaceEnabled) { _, newValue in
                         NudgeSettings.resurfaceEnabled = newValue
                     }
-                Text("Reminds you about saved items you haven't revisited.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
 
                 Toggle("Stale Inbox", isOn: $staleInboxEnabled)
                     .onChange(of: staleInboxEnabled) { _, newValue in
                         NudgeSettings.staleInboxEnabled = newValue
                     }
-                Text("Alerts when inbox items pile up without triage.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
 
                 Toggle("Connection Prompts", isOn: $connectionPromptEnabled)
                     .onChange(of: connectionPromptEnabled) { _, newValue in
                         NudgeSettings.connectionPromptEnabled = newValue
                     }
-                Text("Suggests writing a synthesis note when you add multiple items on the same topic.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
 
                 Toggle("Streaks", isOn: $streakEnabled)
                     .onChange(of: streakEnabled) { _, newValue in
                         NudgeSettings.streakEnabled = newValue
                     }
-                Text("Celebrates consecutive days of engagement with a board.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
 
                 Toggle("Continue Course", isOn: $continueCourseEnabled)
                     .onChange(of: continueCourseEnabled) { _, newValue in
                         NudgeSettings.continueCourseEnabled = newValue
                     }
-                Text("Reminds you to continue your next lecture in a course.")
+
+                Text("Enable only the prompts you want to see.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textSecondary)
             }
 
-            Section("Spaced Resurfacing") {
-                Toggle("Enable spaced resurfacing", isOn: $spacedResurfacingEnabled)
-                    .onChange(of: spacedResurfacingEnabled) { _, newValue in
-                        NudgeSettings.spacedResurfacingEnabled = newValue
-                    }
-                Text("Items with annotations or connections enter a resurfacing queue. Interval adapts based on your engagement.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
-
-                Toggle("Pause all resurfacing", isOn: $globalResurfacingPause)
-                    .onChange(of: globalResurfacingPause) { _, newValue in
-                        NudgeSettings.spacedResurfacingGlobalPause = newValue
-                    }
-                Text("Temporarily pause resurfacing for all items.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
-
-                if let stats = queueStats {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Queue Dashboard")
-                            .sectionHeaderStyle()
-
-                        HStack(spacing: Spacing.lg) {
-                            statBadge(value: stats.totalInQueue, label: "In Queue")
-                            statBadge(value: stats.upcoming, label: "Upcoming")
-                            statBadge(value: stats.overdue, label: "Overdue")
-                            statBadge(value: stats.paused, label: "Paused")
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-
-            Section("Schedule") {
+            Section("Cadence") {
                 Picker("Check Frequency", selection: $scheduleIntervalHours) {
                     ForEach(Self.intervalOptions, id: \.value) { option in
                         Text(option.label).tag(option.value)
@@ -117,7 +74,8 @@ struct NudgeSettingsView: View {
                     .onChange(of: maxNudgesPerDay) { _, newValue in
                         NudgeSettings.maxNudgesPerDay = newValue
                     }
-                Text("Users with high engagement (3+ acted-on nudges in 7 days) may see more.")
+
+                Text("High engagement may temporarily exceed this cap.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textSecondary)
             }
@@ -127,29 +85,28 @@ struct NudgeSettingsView: View {
                     .onChange(of: digestEnabled) { _, newValue in
                         NudgeSettings.digestEnabled = newValue
                     }
-                Text("Generates a summary of your learning activity each week.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
 
-                Picker("Day of week", selection: $digestDayOfWeek) {
-                    Text("Sunday").tag(1)
-                    Text("Monday").tag(2)
-                    Text("Tuesday").tag(3)
-                    Text("Wednesday").tag(4)
-                    Text("Thursday").tag(5)
-                    Text("Friday").tag(6)
-                    Text("Saturday").tag(7)
-                }
-                .onChange(of: digestDayOfWeek) { _, newValue in
-                    NudgeSettings.digestDayOfWeek = newValue
-                }
+                if digestEnabled {
+                    Picker("Day of week", selection: $digestDayOfWeek) {
+                        Text("Sunday").tag(1)
+                        Text("Monday").tag(2)
+                        Text("Tuesday").tag(3)
+                        Text("Wednesday").tag(4)
+                        Text("Thursday").tag(5)
+                        Text("Friday").tag(6)
+                        Text("Saturday").tag(7)
+                    }
+                    .onChange(of: digestDayOfWeek) { _, newValue in
+                        NudgeSettings.digestDayOfWeek = newValue
+                    }
 
-                digestStatusText
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
+                    digestStatusText
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                }
 
                 if !LLMServiceConfig.isConfigured {
-                    Text("AI is not configured. Digest will use a local summary.")
+                    Text("Uses a local summary when AI is not configured.")
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textSecondary)
                 }
@@ -157,33 +114,79 @@ struct NudgeSettingsView: View {
 
             Section("Smart Nudges (AI)") {
                 if LLMServiceConfig.isConfigured {
-                    Text("AI-powered nudges generate on app launch. One per launch, max.")
+                    Text("AI-powered nudges generate on launch (max one per launch).")
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textSecondary)
                 } else {
-                    Text("Enable AI in Settings > AI to get smart nudges. Falls back to time-based nudges when AI is off.")
+                    Text("Enable AI in Settings > AI for smart nudges.")
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textSecondary)
                 }
             }
 
-            Section("Analytics") {
-                analyticsRow(type: .resurface, label: "Resurface")
-                analyticsRow(type: .staleInbox, label: "Stale Inbox")
-                analyticsRow(type: .connectionPrompt, label: "Connection Prompts")
-                analyticsRow(type: .streak, label: "Streaks")
-                analyticsRow(type: .continueCourse, label: "Continue Course")
-                analyticsRow(type: .reflectionPrompt, label: "AI: Reflect")
-                analyticsRow(type: .contradiction, label: "AI: Contradiction")
-                analyticsRow(type: .knowledgeGap, label: "AI: Knowledge Gap")
-                analyticsRow(type: .synthesisPrompt, label: "AI: Synthesis")
-                analyticsRow(type: .continueCourse, label: "AI: Course Continue")
+            Section("Advanced") {
+                DisclosureGroup("Resurfacing queue and analytics", isExpanded: $showAdvancedDetails) {
+                    Toggle("Enable spaced resurfacing", isOn: $spacedResurfacingEnabled)
+                        .onChange(of: spacedResurfacingEnabled) { _, newValue in
+                            NudgeSettings.spacedResurfacingEnabled = newValue
+                        }
+
+                    Toggle("Pause all resurfacing", isOn: $globalResurfacingPause)
+                        .onChange(of: globalResurfacingPause) { _, newValue in
+                            NudgeSettings.spacedResurfacingGlobalPause = newValue
+                        }
+
+                    Text("Items with annotations or connections enter a resurfacing queue.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+
+                    if let stats = queueStats {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Queue")
+                                .font(.groveBadge)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.textSecondary)
+
+                            HStack(spacing: Spacing.lg) {
+                                statBadge(value: stats.totalInQueue, label: "In Queue")
+                                statBadge(value: stats.upcoming, label: "Upcoming")
+                                statBadge(value: stats.overdue, label: "Overdue")
+                                statBadge(value: stats.paused, label: "Paused")
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    Text("Analytics")
+                        .font(.groveBadge)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.textSecondary)
+
+                    analyticsRow(type: .resurface, label: "Resurface")
+                    analyticsRow(type: .staleInbox, label: "Stale Inbox")
+                    analyticsRow(type: .connectionPrompt, label: "Connection Prompts")
+                    analyticsRow(type: .streak, label: "Streaks")
+                    analyticsRow(type: .continueCourse, label: "Continue Course")
+                    analyticsRow(type: .reflectionPrompt, label: "AI: Reflect")
+                    analyticsRow(type: .contradiction, label: "AI: Contradiction")
+                    analyticsRow(type: .knowledgeGap, label: "AI: Knowledge Gap")
+                    analyticsRow(type: .synthesisPrompt, label: "AI: Synthesis")
+                    analyticsRow(type: .dialecticalCheckIn, label: "AI: Chat Check-In")
+                }
             }
         }
         .formStyle(.grouped)
         .frame(minWidth: 400)
         .onAppear {
             loadQueueStats()
+        }
+        .onChange(of: showAdvancedDetails) { _, expanded in
+            if expanded {
+                loadQueueStats()
+            }
         }
     }
 

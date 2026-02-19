@@ -66,7 +66,7 @@ struct ContentView: View {
             detailZStack
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 1200, minHeight: 800)
+        .frame(minWidth: 800, minHeight: 600)
         .modifier(ContentViewEventHandlers(
             selection: $selection,
             selectedItem: $selectedItem,

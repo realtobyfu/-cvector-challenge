@@ -93,7 +93,13 @@ struct GroveApp: App {
                     .tabItem {
                         Label("AI", systemImage: "sparkles")
                     }
-SyncSettingsView()
+
+                AppearanceSettingsView()
+                    .tabItem {
+                        Label("Appearance", systemImage: "paintbrush")
+                    }
+
+                SyncSettingsView()
                     .tabItem {
                         Label("Sync", systemImage: "icloud")
                     }

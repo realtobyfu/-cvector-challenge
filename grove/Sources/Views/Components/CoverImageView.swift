@@ -7,8 +7,10 @@ struct CoverImageView: View {
     var height: CGFloat = 120
     var showPlayOverlay: Bool = false
     var cornerRadius: CGFloat = 4
-    var isDesaturated: Bool = false
+    var isDesaturated: Bool? = nil
     var contentMode: ContentMode = .fill
+    @AppStorage("grove.appearance.monochromeCoverImages")
+    private var monochromeCoverImages = true
 
     var body: some View {
         if let nsImage = NSImage(data: imageData) {
@@ -16,7 +18,7 @@ struct CoverImageView: View {
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: contentMode)
-                .saturation(isDesaturated ? 0.0 : 1.0)
+                .saturation((isDesaturated ?? monochromeCoverImages) ? 0.0 : 1.0)
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
                 .background(Color.bgInput)

@@ -180,13 +180,8 @@ struct BoardDetailView: View {
             )
         }
         .toolbar {
-            ToolbarItemGroup(placement: .secondaryAction) {
-                sortPicker
-                viewModePicker
-                synthesisButton
-                if board.isSmart && !board.smartRuleTags.isEmpty {
-                    smartBoardRuleIndicator
-                }
+            ToolbarItem(placement: .secondaryAction) {
+                boardToolbarCluster
             }
         }
         .background(boardKeyboardHandlers)
@@ -286,7 +281,7 @@ struct BoardDetailView: View {
 
             if !isSuggestionsCollapsed {
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 250, maximum: 400), spacing: Spacing.md)],
+                    columns: [GridItem(.adaptive(minimum: 200, maximum: 350), spacing: Spacing.md)],
                     spacing: Spacing.md
                 ) {
                     ForEach(boardSuggestions) { suggestion in
@@ -492,7 +487,7 @@ struct BoardDetailView: View {
         let canReorder = sortOption == .manual && !board.isSmart
         return ScrollView {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: Spacing.lg)],
+                columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: Spacing.lg)],
                 spacing: Spacing.lg
             ) {
                 ForEach(sortedFilteredItems) { item in
@@ -620,27 +615,6 @@ struct BoardDetailView: View {
         .padding(.vertical, 6)
     }
 
-    private var smartBoardRuleIndicator: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "gearshape.2")
-                .font(.groveBadge)
-                .foregroundStyle(Color.textSecondary)
-            Text(board.smartRuleTags.map(\.name).joined(separator: board.smartRuleLogic == .and ? " & " : " | "))
-                .font(.groveMeta)
-                .foregroundStyle(Color.textSecondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Color.bgInput)
-        .overlay(
-            Capsule()
-                .stroke(Color.borderPrimary, lineWidth: 1)
-        )
-        .clipShape(Capsule())
-        .help("Smart board rules: \(board.smartRuleLogic == .and ? "AND" : "OR") logic")
-    }
-
     private var synthesisButton: some View {
         Button {
             pickedItems = []
@@ -648,8 +622,7 @@ struct BoardDetailView: View {
         } label: {
             Label("Synthesize", systemImage: "sparkles")
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
+        .buttonStyle(.bordered)
         .help("Generate an AI synthesis note from items in this board")
         .disabled(effectiveItems.count < 2)
     }
@@ -681,33 +654,37 @@ struct BoardDetailView: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.arrow.down")
-                Text("Sort: \(sortOption.rawValue)")
-                    .lineLimit(1)
-            }
-            .font(.groveBodySmall)
-            .foregroundStyle(Color.textPrimary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color.bgInput)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.borderPrimary, lineWidth: 1)
-            )
+            Label("Sort", systemImage: "arrow.up.arrow.down")
         }
-        .help("Sort items")
+        .buttonStyle(.bordered)
+        .help("Sort items (\(sortOption.rawValue))")
     }
 
-    private var viewModePicker: some View {
-        Picker("View Mode", selection: $viewMode) {
-            Label("Grid", systemImage: BoardViewMode.grid.iconName).tag(BoardViewMode.grid)
-            Label("List", systemImage: BoardViewMode.list.iconName).tag(BoardViewMode.list)
+    private var viewModeButton: some View {
+        Button {
+            viewMode = viewMode == .grid ? .list : .grid
+        } label: {
+            Label(viewMode == .grid ? "List" : "Grid", systemImage: viewMode.iconName)
         }
-        .pickerStyle(.segmented)
-        .frame(width: 160)
-        .help("Toggle grid/list view")
+        .buttonStyle(.bordered)
+        .help(viewMode == .grid ? "Switch to list view" : "Switch to grid view")
+    }
+
+    private var smartBoardRuleIcon: some View {
+        Image(systemName: "gearshape.2")
+            .help("Smart board rules: \(board.smartRuleTags.map(\.name).joined(separator: board.smartRuleLogic == .and ? " AND " : " OR "))")
+    }
+
+    @ViewBuilder
+    private var boardToolbarCluster: some View {
+        HStack(spacing: Spacing.sm) {
+            sortPicker
+            viewModeButton
+            synthesisButton
+            if board.isSmart && !board.smartRuleTags.isEmpty {
+                smartBoardRuleIcon
+            }
+        }
     }
 
     // MARK: - Video Drag-and-Drop

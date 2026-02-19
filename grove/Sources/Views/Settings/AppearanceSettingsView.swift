@@ -1,0 +1,23 @@
+import SwiftUI
+
+/// Settings view for app appearance preferences.
+struct AppearanceSettingsView: View {
+    @State private var monochromeCoverImages = AppearanceSettings.monochromeCoverImages
+
+    var body: some View {
+        Form {
+            Section("Cover Images") {
+                Toggle("Render cover images in black and white", isOn: $monochromeCoverImages)
+                    .onChange(of: monochromeCoverImages) { _, newValue in
+                        AppearanceSettings.monochromeCoverImages = newValue
+                    }
+
+                Text("Turn this off to display cover images in full color.")
+                    .font(.groveBodySmall)
+                    .foregroundStyle(Color.textSecondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(minWidth: 400)
+    }
+}

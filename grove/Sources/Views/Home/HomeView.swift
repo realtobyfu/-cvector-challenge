@@ -4,6 +4,11 @@ import SwiftData
 // MARK: - HomeView
 
 struct HomeView: View {
+    private struct PromptModeSelection: Equatable {
+        let prompt: String
+        let label: String
+    }
+
     @Binding var selectedItem: Item?
     @Binding var openedItem: Item?
     @Environment(\.modelContext) private var modelContext
@@ -12,21 +17,17 @@ struct HomeView: View {
 
     @State private var starterService = ConversationStarterService()
     @State private var isInboxCollapsed = false
-    @State private var isDialecticCollapsed = false
-    @State private var isSuggestionsCollapsed = false
+    @State private var isDiscussionCollapsed = false
     @State private var isItemsCollapsed = false
     @State private var isConversationsCollapsed = false
+    @State private var promptModeSelection: PromptModeSelection? = nil
 
     private var inboxCount: Int {
         allItems.filter { $0.status == .inbox }.count
     }
 
-    private var dialecticBubbles: [PromptBubble] {
-        Array(starterService.bubbles.prefix(2))
-    }
-
-    private var writingBubbles: [PromptBubble] {
-        Array(starterService.bubbles.dropFirst(2).prefix(3))
+    private var discussionBubbles: [PromptBubble] {
+        Array(starterService.bubbles.prefix(5))
     }
 
     private var recentItems: [Item] {
@@ -38,32 +39,43 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                CaptureBarView()
-                    .padding(.bottom, Spacing.sm)
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    CaptureBarView()
+                        .padding(.bottom, Spacing.sm)
 
-                inboxSection
-                    .padding(.bottom, Spacing.xl)
-
-                dialecticSection
-                    .padding(.bottom, Spacing.xl)
-
-                suggestionsSection
-                    .padding(.bottom, Spacing.xl)
-
-                recentItemsSection
-                    .padding(.bottom, Spacing.xl)
-
-                if !recentConversations.isEmpty {
-                    recentConversationsSection
+                    inboxSection
                         .padding(.bottom, Spacing.xl)
-                }
 
-                Spacer(minLength: Spacing.xxxl)
+                    discussionSection
+                        .padding(.bottom, Spacing.xl)
+
+                    recentItemsSection
+                        .padding(.bottom, Spacing.xl)
+
+                    if !recentConversations.isEmpty {
+                        recentConversationsSection
+                            .padding(.bottom, Spacing.xl)
+                    }
+
+                    Spacer(minLength: Spacing.xxxl)
+                }
+                .padding(.horizontal, LayoutDimensions.contentPaddingH)
+                .padding(.top, LayoutDimensions.contentPaddingTop)
             }
-            .padding(.horizontal, LayoutDimensions.contentPaddingH)
-            .padding(.top, LayoutDimensions.contentPaddingTop)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let selection = promptModeSelection {
+                Rectangle()
+                    .fill(Color.borderPrimary)
+                    .frame(width: 1)
+
+                promptModePanel(for: selection)
+                    .frame(width: 330)
+                    .frame(maxHeight: .infinity)
+                    .transition(.move(edge: .trailing))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgPrimary)
@@ -71,6 +83,7 @@ struct HomeView: View {
         .task {
             await starterService.refresh(items: allItems)
         }
+        .animation(.easeInOut(duration: 0.2), value: promptModeSelection != nil)
     }
 
     // MARK: - Inbox Section
@@ -84,17 +97,17 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Dialectic Section
+    // MARK: - Discussion Prompts Section
 
-    private var dialecticSection: some View {
+    private var discussionSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             HomeSectionHeader(
-                title: "DIALECTIC",
-                count: 1 + dialecticBubbles.count,
-                isCollapsed: $isDialecticCollapsed
+                title: "DISCUSSION PROMPTS",
+                count: 1 + discussionBubbles.count,
+                isCollapsed: $isDiscussionCollapsed
             )
 
-            if !isDialecticCollapsed {
+            if !isDiscussionCollapsed {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 250, maximum: 400), spacing: Spacing.md)],
                     spacing: Spacing.md
@@ -105,43 +118,16 @@ struct HomeView: View {
                         subtitle: "Start an open-ended dialectical session",
                         icon: "bubble.left.and.bubble.right"
                     ) {
+                        promptModeSelection = nil
                         openConversation(with: "")
                     }
 
-                    ForEach(dialecticBubbles) { bubble in
+                    ForEach(discussionBubbles) { bubble in
                         SuggestedConversationCard(
                             label: bubble.label,
                             title: bubble.prompt
                         ) {
-                            openDialecticPrompt(bubble.prompt)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Suggestions Section
-
-    private var suggestionsSection: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            HomeSectionHeader(
-                title: "WRITING PROMPTS",
-                count: writingBubbles.count,
-                isCollapsed: $isSuggestionsCollapsed
-            )
-
-            if !isSuggestionsCollapsed {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 250, maximum: 400), spacing: Spacing.md)],
-                    spacing: Spacing.md
-                ) {
-                    ForEach(writingBubbles) { bubble in
-                        SuggestedConversationCard(
-                            label: bubble.label,
-                            title: bubble.prompt
-                        ) {
-                            openWritingPrompt(bubble.prompt)
+                            presentModePanel(for: bubble)
                         }
                     }
                 }
@@ -299,12 +285,104 @@ struct HomeView: View {
 
     // MARK: - Actions
 
-    private func openWritingPrompt(_ question: String) {
-        NotificationCenter.default.post(name: .groveNewNoteWithPrompt, object: question)
+    private func promptModePanel(for selection: PromptModeSelection) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            HStack(spacing: Spacing.sm) {
+                Text("PROMPT ACTIONS")
+                    .sectionHeaderStyle()
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        promptModeSelection = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.textSecondary)
+                        .padding(8)
+                        .background(Color.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.top, Spacing.md)
+
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(selection.label.uppercased())
+                    .font(.groveBadge)
+                    .tracking(0.8)
+                    .foregroundStyle(Color.textSecondary)
+
+                Text(selection.prompt)
+                    .font(.groveBody)
+                    .foregroundStyle(Color.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.borderPrimary, lineWidth: 1)
+            )
+            .padding(.horizontal, Spacing.md)
+
+            VStack(spacing: Spacing.sm) {
+                Button {
+                    startDialectic(with: selection.prompt)
+                } label: {
+                    Label("Open Dialectic Chat", systemImage: "bubble.left.and.bubble.right")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.md)
+                        .padding(.vertical, Spacing.sm)
+                        .background(Color.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    startWriting(with: selection.prompt)
+                } label: {
+                    Label("Start Writing", systemImage: "square.and.pencil")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.md)
+                        .padding(.vertical, Spacing.sm)
+                        .background(Color.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, Spacing.md)
+
+            Spacer(minLength: 0)
+        }
+        .background(Color.bgInspector)
     }
 
-    private func openDialecticPrompt(_ question: String) {
-        NotificationCenter.default.post(name: .groveStartDialecticWithDisplayPrompt, object: question)
+    private func presentModePanel(for bubble: PromptBubble) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            promptModeSelection = PromptModeSelection(prompt: bubble.prompt, label: bubble.label)
+        }
     }
 
     private func openConversation(with prompt: String, seedItemIDs: [UUID] = []) {
@@ -317,6 +395,24 @@ struct HomeView: View {
             object: prompt,
             userInfo: userInfo.isEmpty ? nil : userInfo
         )
+    }
+
+    private func startWriting(with prompt: String?) {
+        defer { promptModeSelection = nil }
+        guard let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            NotificationCenter.default.post(name: .groveNewNote, object: nil)
+            return
+        }
+        NotificationCenter.default.post(name: .groveNewNoteWithPrompt, object: prompt)
+    }
+
+    private func startDialectic(with prompt: String?) {
+        defer { promptModeSelection = nil }
+        guard let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            openConversation(with: "")
+            return
+        }
+        NotificationCenter.default.post(name: .groveStartDialecticWithDisplayPrompt, object: prompt)
     }
 }
 
@@ -345,17 +441,25 @@ struct SuggestedConversationCard: View {
                             .tracking(0.8)
                             .foregroundStyle(Color.textSecondary)
 
-                        HStack(spacing: Spacing.sm) {
-                            if let icon {
-                                Image(systemName: icon)
-                                    .font(.groveBodySecondary)
-                                    .foregroundStyle(Color.textSecondary)
+                        if subtitle != nil {
+                            HStack(spacing: Spacing.sm) {
+                                if let icon {
+                                    Image(systemName: icon)
+                                        .font(.groveBodySecondary)
+                                        .foregroundStyle(Color.textSecondary)
+                                }
+                                Text(title)
+                                    .font(.groveBody)
+                                    .foregroundStyle(Color.textPrimary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
                             }
+                        } else {
                             Text(title)
                                 .font(.groveBody)
                                 .foregroundStyle(Color.textPrimary)
-                                .lineLimit(2)
                                 .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         if let subtitle {
