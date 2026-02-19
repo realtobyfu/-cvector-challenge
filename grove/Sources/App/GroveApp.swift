@@ -128,6 +128,11 @@ struct GroveMenuCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
 
+            Button("New Board") {
+                NotificationCenter.default.post(name: .groveNewBoard, object: nil)
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+
             Divider()
 
             Button("Quick Capture") {

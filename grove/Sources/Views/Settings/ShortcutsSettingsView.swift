@@ -14,6 +14,7 @@ struct ShortcutsSettingsView: View {
                 shortcutRow("Search", shortcut: "⌘F")
                 shortcutRow("Go to Inbox", shortcut: "⌘0")
                 shortcutRow("Go to Board 1–9", shortcut: "⌘1 – ⌘9")
+                shortcutRow("New Board", shortcut: "⌘⇧B")
             }
 
             Section("View") {

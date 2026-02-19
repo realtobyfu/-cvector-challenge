@@ -79,13 +79,28 @@ struct SidebarView: View {
                     viewModel.moveBoard(from: source, to: destination, in: boards)
                 }
             } header: {
-                Text("Boards")
-                    .sectionHeaderStyle()
-                    .contextMenu {
-                        Button("New Board...") {
-                            showNewBoardSheet = true
-                        }
+                HStack(spacing: Spacing.sm) {
+                    Text("Boards")
+                        .sectionHeaderStyle()
+
+                    Spacer()
+
+                    Button {
+                        showNewBoardSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.textMuted)
+                            .frame(width: 16, height: 16)
                     }
+                    .buttonStyle(.plain)
+                    .help("New Board")
+                }
+                .contextMenu {
+                    Button("New Board...") {
+                        showNewBoardSheet = true
+                    }
+                }
             }
 
             Section {
@@ -112,13 +127,28 @@ struct SidebarView: View {
                     }
                 }
             } header: {
-                Text("Courses")
-                    .sectionHeaderStyle()
-                    .contextMenu {
-                        Button("New Course...") {
-                            showNewCourseSheet = true
-                        }
+                HStack(spacing: Spacing.sm) {
+                    Text("Courses")
+                        .sectionHeaderStyle()
+
+                    Spacer()
+
+                    Button {
+                        showNewCourseSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.textMuted)
+                            .frame(width: 16, height: 16)
                     }
+                    .buttonStyle(.plain)
+                    .help("New Course")
+                }
+                .contextMenu {
+                    Button("New Course...") {
+                        showNewCourseSheet = true
+                    }
+                }
             }
 
             if !recentConversations.isEmpty {
@@ -198,6 +228,9 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .onReceive(NotificationCenter.default.publisher(for: .groveNewBoard)) { _ in
+            showNewBoardSheet = true
+        }
         .sheet(isPresented: $showNewBoardSheet) {
             BoardEditorSheet(
                 onSave: { title, icon, color, nudgeFreq in

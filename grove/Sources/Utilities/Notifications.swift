@@ -2,6 +2,7 @@ import Foundation
 
 extension Notification.Name {
     static let groveNewNote = Notification.Name("groveNewNote")
+    static let groveNewBoard = Notification.Name("groveNewBoard")
     static let groveQuickCapture = Notification.Name("groveQuickCapture")
     static let groveToggleSearch = Notification.Name("groveToggleSearch")
     static let groveToggleInspector = Notification.Name("groveToggleInspector")
