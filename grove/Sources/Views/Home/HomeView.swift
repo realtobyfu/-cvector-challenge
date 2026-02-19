@@ -102,7 +102,7 @@ struct HomeView: View {
     private var discussionSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             HomeSectionHeader(
-                title: "DISCUSSION PROMPTS",
+                title: "DISCUSSION SUGGESTIONS",
                 count: 1 + discussionBubbles.count,
                 isCollapsed: $isDiscussionCollapsed
             )
@@ -386,14 +386,8 @@ struct HomeView: View {
     }
 
     private func openConversation(with prompt: String, seedItemIDs: [UUID] = []) {
-        var userInfo: [String: Any] = [:]
-        if !seedItemIDs.isEmpty {
-            userInfo["seedItemIDs"] = seedItemIDs
-        }
-        NotificationCenter.default.post(
-            name: .groveStartConversationWithPrompt,
-            object: prompt,
-            userInfo: userInfo.isEmpty ? nil : userInfo
+        NotificationCenter.default.postConversationPrompt(
+            ConversationPromptPayload(prompt: prompt, seedItemIDs: seedItemIDs)
         )
     }
 

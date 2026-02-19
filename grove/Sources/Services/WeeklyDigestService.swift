@@ -2,9 +2,8 @@ import Foundation
 import SwiftData
 
 /// Protocol for testability.
-@MainActor
 protocol WeeklyDigestServiceProtocol {
-    func generateDigest(context: ModelContext) async -> Item?
+    @MainActor func generateDigest(context: ModelContext) async -> Item?
 }
 
 /// LLM-backed weekly digest generator. Gathers items added, reflections written,
@@ -12,7 +11,6 @@ protocol WeeklyDigestServiceProtocol {
 /// for a 150-250 word summary. Falls back to a local heuristic digest if LLM is
 /// unavailable. Creates the digest as a special Item with type .note and metadata
 /// digest=true.
-@MainActor
 final class WeeklyDigestService: WeeklyDigestServiceProtocol {
     private let provider: LLMProvider
 
@@ -20,8 +18,8 @@ final class WeeklyDigestService: WeeklyDigestServiceProtocol {
         self.provider = provider
     }
 
-    func generateDigest(context: ModelContext) async -> Item? {
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+    @MainActor func generateDigest(context: ModelContext) async -> Item? {
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.recent, to: .now) ?? .now
 
         let allItems = (try? context.fetch(FetchDescriptor<Item>())) ?? []
         let boards = (try? context.fetch(FetchDescriptor<Board>())) ?? []
@@ -38,7 +36,7 @@ final class WeeklyDigestService: WeeklyDigestServiceProtocol {
         let newConnections = allConnections.filter { $0.createdAt > sevenDaysAgo }
 
         // Activity threshold: at least 2 items added or 1 reflection written
-        guard newItems.count >= 2 || newReflections.count >= 1 else { return nil }
+        guard newItems.count >= AppConstants.Activity.digestMinItems || newReflections.count >= AppConstants.Activity.digestMinReflections else { return nil }
 
         // Generate digest content
         let markdownContent: String
@@ -122,7 +120,7 @@ final class WeeklyDigestService: WeeklyDigestServiceProtocol {
         """
     }
 
-    private func buildUserPrompt(
+    @MainActor private func buildUserPrompt(
         newItems: [Item],
         newReflections: [ReflectionBlock],
         newConnections: [Connection],
@@ -132,13 +130,8 @@ final class WeeklyDigestService: WeeklyDigestServiceProtocol {
         var parts: [String] = []
 
         // Items added this week
-        let itemLines = newItems.prefix(20).map { item in
-            let tags = item.tags.prefix(3).map(\.name).joined(separator: ", ")
-            let tagsStr = tags.isEmpty ? "" : " [tags: \(tags)]"
-            let reflected = item.reflections.isEmpty ? "" : " (reflected: \(item.reflections.count) blocks)"
-            return "- \"\(item.title)\" (\(item.type.rawValue))\(tagsStr)\(reflected)"
-        }.joined(separator: "\n")
-        parts.append("ITEMS ADDED THIS WEEK (\(newItems.count) total):\n\(itemLines)")
+        let itemList = LLMContextBuilder.itemList(Array(newItems.prefix(20)), maxItems: 20)
+        parts.append("ITEMS ADDED THIS WEEK (\(newItems.count) total):\n\(itemList)")
 
         // Reflections written
         if !newReflections.isEmpty {
@@ -156,7 +149,7 @@ final class WeeklyDigestService: WeeklyDigestServiceProtocol {
 
         // Most active boards
         let boardActivity = boards.compactMap { board -> (String, Int)? in
-            let weekItems = board.items.filter { $0.createdAt > (Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now) }
+            let weekItems = board.items.filter { $0.createdAt > (Calendar.current.date(byAdding: .day, value: -AppConstants.Days.recent, to: .now) ?? .now) }
             guard weekItems.count > 0 else { return nil }
             return (board.title, weekItems.count)
         }.sorted { $0.1 > $1.1 }

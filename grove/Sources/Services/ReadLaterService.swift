@@ -48,11 +48,19 @@ enum ReadLaterPreset: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Protocol for read later service.
+@MainActor
+protocol ReadLaterServiceProtocol {
+    func queue(_ item: Item, for preset: ReadLaterPreset)
+    func queue(_ item: Item, until date: Date)
+    @discardableResult func restoreDueItems(referenceDate: Date) -> Int
+}
+
 /// Handles deferred inbox triage ("Read Later") by moving items into a queue
 /// and returning them to inbox once their due date arrives.
 @MainActor
 @Observable
-final class ReadLaterService {
+final class ReadLaterService: ReadLaterServiceProtocol {
     private var modelContext: ModelContext
 
     init(modelContext: ModelContext) {

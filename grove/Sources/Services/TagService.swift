@@ -18,10 +18,17 @@ struct TagHierarchySuggestion: Identifiable {
     let reason: String
 }
 
+/// Protocol for tag service.
+@MainActor
+protocol TagServiceProtocol {
+    func mergeTags(keep: Tag, remove: Tag)
+    func findMergeSuggestions(from tags: [Tag]) -> [TagMergeSuggestion]
+}
+
 /// Service for tag analysis: duplicate detection, merging, hierarchy suggestions, and improved clustering
 @MainActor
 @Observable
-final class TagService {
+final class TagService: TagServiceProtocol {
     private var modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -49,7 +56,7 @@ final class TagService {
                 if seen.contains(pairKey) { continue }
 
                 let sim = Self.nameSimilarity(tag1.name, tag2.name)
-                if sim >= 0.75 {
+                if sim >= AppConstants.Scoring.tagMergeSimilarity {
                     let reason = describeSimReason(tag1.name, tag2.name)
                     suggestions.append(TagMergeSuggestion(
                         tag1: tag1,

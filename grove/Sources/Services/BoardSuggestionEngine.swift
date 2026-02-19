@@ -155,8 +155,14 @@ enum BoardSuggestionMetadata {
     }
 }
 
+/// Protocol for board suggestion engine.
 @MainActor
-struct BoardSuggestionEngine {
+protocol BoardSuggestionEngineProtocol {
+    func resolveSuggestion(for item: Item, suggestedName: String, boards: [Board]) -> BoardSuggestionDecision
+}
+
+@MainActor
+struct BoardSuggestionEngine: BoardSuggestionEngineProtocol {
     private struct Candidate {
         let board: Board
         let score: Double
@@ -351,11 +357,7 @@ struct BoardSuggestionEngine {
     }
 
     private func tokens(from text: String) -> Set<String> {
-        let components = text
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count > 1 }
-        return Set(components)
+        TextTokenizer.tokenize(text, minLength: 2)
     }
 
     private static func normalizeToken(_ value: String) -> String {
@@ -367,10 +369,6 @@ struct BoardSuggestionEngine {
     }
 
     private func jaccard(_ a: Set<String>, _ b: Set<String>) -> Double {
-        guard !a.isEmpty, !b.isEmpty else { return 0 }
-        let intersection = a.intersection(b).count
-        let union = a.union(b).count
-        guard union > 0 else { return 0 }
-        return Double(intersection) / Double(union)
+        TextTokenizer.jaccardSimilarity(a, b)
     }
 }

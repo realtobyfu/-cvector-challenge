@@ -250,11 +250,11 @@ final class KnowledgeBaseTools {
     }
 
     private func createSynthesis(itemTitles: [String], focusPrompt: String, synthesisTitle: String) async -> String {
-        guard itemTitles.count >= 2 else {
-            return "Error: create_synthesis requires at least 2 item titles. Got \(itemTitles.count)."
+        guard itemTitles.count >= AppConstants.Activity.synthesisMinItems else {
+            return "Error: create_synthesis requires at least \(AppConstants.Activity.synthesisMinItems) item titles. Got \(itemTitles.count)."
         }
-        guard itemTitles.count <= 30 else {
-            return "Error: Too many items (\(itemTitles.count)). Synthesis works best with 2-30 items."
+        guard itemTitles.count <= AppConstants.Activity.synthesisMaxItems else {
+            return "Error: Too many items (\(itemTitles.count)). Synthesis works best with \(AppConstants.Activity.synthesisMinItems)-\(AppConstants.Activity.synthesisMaxItems) items."
         }
 
         let allItems = fetchAllItems()
@@ -268,7 +268,7 @@ final class KnowledgeBaseTools {
             }
         }
 
-        guard matchedItems.count >= 2 else {
+        guard matchedItems.count >= AppConstants.Activity.synthesisMinItems else {
             return "Error: Could not find enough matching items. Missing: \(missingTitles.joined(separator: ", ")). Found: \(matchedItems.map(\.title).joined(separator: ", "))."
         }
 

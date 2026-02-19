@@ -320,19 +320,7 @@ final class DialecticsService: DialecticsServiceProtocol {
     private func buildSeedContext(items: [Item]) -> String {
         var parts = ["[Context: The user wants to discuss the following items from their knowledge base]\n"]
         for item in items {
-            var desc = "## \(item.title)\nType: \(item.type.rawValue)"
-            let tags = item.tags.map(\.name).joined(separator: ", ")
-            if !tags.isEmpty { desc += "\nTags: \(tags)" }
-            if let content = item.content {
-                desc += "\nContent: \(String(content.prefix(500)))"
-            }
-            if !item.reflections.isEmpty {
-                desc += "\nUser reflections:"
-                for block in item.reflections.sorted(by: { $0.position < $1.position }).prefix(3) {
-                    desc += "\n- [\(block.blockType.displayName)] \(String(block.content.prefix(200)))"
-                }
-            }
-            parts.append(desc)
+            parts.append(LLMContextBuilder.itemDescription(item, contentLimit: 500))
         }
         return parts.joined(separator: "\n\n")
     }

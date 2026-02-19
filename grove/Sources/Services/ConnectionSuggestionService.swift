@@ -103,32 +103,15 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
         - Only return valid JSON, no extra text.
         """
 
-        let sourceTagNames = sourceItem.tags.map(\.name).joined(separator: ", ")
-        let sourceReflections = sourceItem.reflections
-            .sorted { $0.position < $1.position }
-            .prefix(5)
-            .map { "\($0.blockType.displayName): \($0.content)" }
-            .joined(separator: "\n")
-        let contentExcerpt = String((sourceItem.content ?? "").prefix(1000))
-
-        var candidateDescriptions: [String] = []
-        for (index, candidate) in candidates.prefix(50).enumerated() {
-            let tags = candidate.tags.map(\.name).joined(separator: ", ")
-            let summary = candidate.metadata["summary"] ?? ""
-            let line = "\(index + 1). \"\(candidate.title)\" [tags: \(tags.isEmpty ? "none" : tags)]\(summary.isEmpty ? "" : " — \(summary)")"
-            candidateDescriptions.append(line)
-        }
+        let sourceDesc = LLMContextBuilder.itemDescription(sourceItem)
+        let candidateList = LLMContextBuilder.itemList(Array(candidates.prefix(AppConstants.LLM.maxCandidateItems)))
 
         let userPrompt = """
         SOURCE ITEM:
-        Title: \(sourceItem.title)
-        Tags: \(sourceTagNames.isEmpty ? "none" : sourceTagNames)
-        Content excerpt:
-        \(contentExcerpt.isEmpty ? "(no content)" : contentExcerpt)
-        \(sourceReflections.isEmpty ? "" : "Reflections:\n\(sourceReflections)")
+        \(sourceDesc)
 
         CANDIDATE ITEMS:
-        \(candidateDescriptions.joined(separator: "\n"))
+        \(candidateList)
         """
 
         guard let result = await provider.complete(system: systemPrompt, user: userPrompt, service: "suggestions") else {
@@ -152,7 +135,7 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
                   targetItem.id != sourceItem.id else { continue }
 
             let connectionType = ConnectionType(rawValue: entry.connection_type) ?? .related
-            let reason = String(entry.reason.prefix(80))
+            let reason = String(entry.reason.prefix(AppConstants.LLM.reasonMaxLength))
 
             suggestions.append(ConnectionSuggestion(
                 targetItem: targetItem,
@@ -227,14 +210,14 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
             }
 
             // 2. Title similarity
-            let titleSim = jaccardSimilarity(sourceWords.titleWords, candidateWords.titleWords)
+            let titleSim = TextTokenizer.jaccardSimilarity(sourceWords.titleWords, candidateWords.titleWords)
             if titleSim > 0.1 {
                 totalScore += titleSim * 0.4
                 reasons.append("similar titles")
             }
 
             // 3. Content keyword overlap
-            let contentSim = jaccardSimilarity(sourceWords.contentWords, candidateWords.contentWords)
+            let contentSim = TextTokenizer.jaccardSimilarity(sourceWords.contentWords, candidateWords.contentWords)
             if contentSim > 0.05 {
                 totalScore += contentSim * 0.3
                 reasons.append("overlapping content")
@@ -248,7 +231,7 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
             }
 
             // Minimum threshold
-            guard totalScore >= 0.15 else { continue }
+            guard totalScore >= AppConstants.Scoring.connectionSuggestionFloor else { continue }
 
             let suggestedType = inferConnectionType(
                 sourceItem: sourceItem,
@@ -282,7 +265,7 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
 
         // Need at least 5 other items for meaningful signal
         let otherItems = allItems.filter { $0.id != item.id }
-        guard otherItems.count >= 5 else { return }
+        guard otherItems.count >= AppConstants.Scoring.minItemsForAutoConnect else { return }
 
         // Skip items already connected in either direction
         let connectedIDs = Set(
@@ -302,11 +285,11 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
         // Heuristic fallback: only very strong signals (≥ 0.5, well above the 0.15 suggestion floor)
         if suggestions.isEmpty {
             let heuristic = suggestConnections(for: item, maxResults: 5)
-            suggestions = heuristic.filter { $0.score >= 0.5 }
+            suggestions = heuristic.filter { $0.score >= AppConstants.Scoring.autoConnectHeuristicFloor }
         }
 
         // Cap at 2 auto-connections
-        let toCreate = Array(suggestions.prefix(2))
+        let toCreate = Array(suggestions.prefix(AppConstants.Scoring.maxAutoConnections))
         for suggestion in toCreate {
             let connection = Connection(
                 sourceItem: item,
@@ -343,26 +326,15 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
         - Only return valid JSON, no extra text.
         """
 
-        var candidateDescriptions: [String] = []
-        for (index, candidate) in candidates.prefix(50).enumerated() {
-            let tags = candidate.tags.map(\.name).joined(separator: ", ")
-            let summary = candidate.metadata["summary"] ?? ""
-            let line = "\(index + 1). \"\(candidate.title)\" [tags: \(tags.isEmpty ? "none" : tags)]\(summary.isEmpty ? "" : " — \(summary)")"
-            candidateDescriptions.append(line)
-        }
-
-        let sourceTagNames = item.tags.map(\.name).joined(separator: ", ")
-        let contentExcerpt = String((item.content ?? "").prefix(1000))
+        let sourceDesc = LLMContextBuilder.itemDescription(item)
+        let candidateList = LLMContextBuilder.itemList(Array(candidates.prefix(AppConstants.LLM.maxCandidateItems)))
 
         let userPrompt = """
         SOURCE ITEM:
-        Title: \(item.title)
-        Tags: \(sourceTagNames.isEmpty ? "none" : sourceTagNames)
-        Content excerpt:
-        \(contentExcerpt.isEmpty ? "(no content)" : contentExcerpt)
+        \(sourceDesc)
 
         CANDIDATE ITEMS:
-        \(candidateDescriptions.joined(separator: "\n"))
+        \(candidateList)
         """
 
         guard let result = await provider.complete(system: systemPrompt, user: userPrompt, service: "auto-connect") else {
@@ -381,14 +353,14 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
         var suggestions: [ConnectionSuggestion] = []
         for entry in parsed.suggestions {
             let score = entry.score ?? 0.0
-            guard score >= 0.7 else { continue }
+            guard score >= AppConstants.Scoring.autoConnectLLMConfidence else { continue }
 
             let normalizedTitle = entry.target_title.lowercased()
             guard let targetItem = candidatesByTitle[normalizedTitle],
                   targetItem.id != item.id else { continue }
 
             let connectionType = ConnectionType(rawValue: entry.connection_type) ?? .related
-            let reason = String(entry.reason.prefix(80))
+            let reason = String(entry.reason.prefix(AppConstants.LLM.reasonMaxLength))
 
             suggestions.append(ConnectionSuggestion(
                 targetItem: targetItem,
@@ -426,49 +398,15 @@ final class ConnectionSuggestionService: ConnectionSuggestionServiceProtocol {
     }
 
     private func extractKeywords(from item: Item) -> ItemKeywords {
-        let titleWords = tokenize(item.title)
+        let titleWords = TextTokenizer.tokenize(item.title)
 
         var contentText = item.content ?? ""
-        // Include reflection content for richer signal
         for reflection in item.reflections {
             contentText += " " + reflection.content
         }
-        let contentWords = tokenize(contentText)
+        let contentWords = TextTokenizer.tokenize(contentText)
 
         return ItemKeywords(titleWords: titleWords, contentWords: contentWords)
-    }
-
-    private func tokenize(_ text: String) -> Set<String> {
-        let lowered = text.lowercased()
-        let cleaned = lowered.unicodeScalars.filter {
-            CharacterSet.alphanumerics.contains($0) || CharacterSet.whitespaces.contains($0)
-        }
-        let words = String(cleaned)
-            .components(separatedBy: .whitespaces)
-            .filter { $0.count >= 3 }  // Skip very short words
-        // Remove common stop words
-        let stopWords: Set<String> = [
-            "the", "and", "for", "are", "but", "not", "you", "all",
-            "can", "had", "her", "was", "one", "our", "out", "has",
-            "its", "let", "say", "she", "too", "use", "way", "who",
-            "how", "man", "did", "get", "may", "him", "old", "see",
-            "now", "any", "new", "also", "back", "been", "come",
-            "each", "from", "have", "here", "just", "know", "like",
-            "make", "many", "more", "much", "must", "name", "over",
-            "only", "some", "such", "take", "than", "that", "them",
-            "then", "they", "this", "very", "when", "what", "will",
-            "with", "your", "into", "about", "could", "other",
-            "their", "there", "these", "those", "which", "would",
-        ]
-        return Set(words).subtracting(stopWords)
-    }
-
-    private func jaccardSimilarity(_ a: Set<String>, _ b: Set<String>) -> Double {
-        guard !a.isEmpty || !b.isEmpty else { return 0 }
-        let intersection = a.intersection(b).count
-        let union = a.union(b).count
-        guard union > 0 else { return 0 }
-        return Double(intersection) / Double(union)
     }
 
     // MARK: - Connection Type Inference

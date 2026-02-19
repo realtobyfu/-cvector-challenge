@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 extension Notification.Name {
     static let groveNewNote = Notification.Name("groveNewNote")
@@ -18,12 +19,53 @@ extension Notification.Name {
     static let groveExitFocusMode = Notification.Name("groveExitFocusMode")
     /// Object: String — the writing prompt to display at the top of NoteWriterOverlayView
     static let groveNewNoteWithPrompt = Notification.Name("groveNewNoteWithPrompt")
-    /// Object: String — the prompt text to pre-fill as the first user message
-    /// userInfo["seedItemIDs"]: [UUID] — optional item IDs to seed the conversation context
     static let groveStartConversationWithPrompt = Notification.Name("groveStartConversationWithPrompt")
-    /// Object: Item — the item to anchor the conversation to; opens Dialectics with a pre-generated opening message
     static let groveDiscussItem = Notification.Name("groveDiscussItem")
-    /// Object: String — prompt shown as an assistant message; user types first reply
     static let groveStartDialecticWithDisplayPrompt = Notification.Name("groveStartDialecticWithDisplayPrompt")
     static let groveOpenReflectMode = Notification.Name("groveOpenReflectMode")
+}
+
+// MARK: - Typed Notification Payloads
+
+struct ConversationPromptPayload {
+    let prompt: String
+    let seedItemIDs: [UUID]
+
+    init(prompt: String, seedItemIDs: [UUID] = []) {
+        self.prompt = prompt
+        self.seedItemIDs = seedItemIDs
+    }
+}
+
+struct DiscussItemPayload {
+    let item: Item
+}
+
+extension NotificationCenter {
+    func postConversationPrompt(_ payload: ConversationPromptPayload) {
+        var userInfo: [String: Any] = [:]
+        if !payload.seedItemIDs.isEmpty {
+            userInfo["seedItemIDs"] = payload.seedItemIDs
+        }
+        post(
+            name: .groveStartConversationWithPrompt,
+            object: payload.prompt,
+            userInfo: userInfo.isEmpty ? nil : userInfo
+        )
+    }
+
+    static func conversationPromptPayload(from notification: Notification) -> ConversationPromptPayload {
+        let prompt = notification.object as? String ?? ""
+        let seedIDs = notification.userInfo?["seedItemIDs"] as? [UUID] ?? []
+        return ConversationPromptPayload(prompt: prompt, seedItemIDs: seedIDs)
+    }
+
+    func postDiscussItem(_ payload: DiscussItemPayload) {
+        post(name: .groveDiscussItem, object: payload.item)
+    }
+
+    static func discussItemPayload(from notification: Notification) -> DiscussItemPayload? {
+        guard let item = notification.object as? Item else { return nil }
+        return DiscussItemPayload(item: item)
+    }
 }

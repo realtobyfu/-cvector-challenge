@@ -237,12 +237,13 @@ struct CaptureBarView: View {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let viewModel = ItemViewModel(modelContext: modelContext)
-        let item = viewModel.captureItem(input: trimmed)
+        let captureService = CaptureService(modelContext: modelContext)
+        let item = captureService.captureItem(input: trimmed)
 
         // Auto-assign to current board if one is selected
         if let boardID = currentBoardID,
            let board = boards.first(where: { $0.id == boardID }) {
+            let viewModel = ItemViewModel(modelContext: modelContext)
             viewModel.assignToBoard(item, board: board)
         }
 
@@ -513,11 +514,12 @@ struct CaptureBarOverlayView: View {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let viewModel = ItemViewModel(modelContext: modelContext)
-        let item = viewModel.captureItem(input: trimmed)
+        let captureService = CaptureService(modelContext: modelContext)
+        let item = captureService.captureItem(input: trimmed)
 
         if let boardID = currentBoardID,
            let board = boards.first(where: { $0.id == boardID }) {
+            let viewModel = ItemViewModel(modelContext: modelContext)
             viewModel.assignToBoard(item, board: board)
         }
 

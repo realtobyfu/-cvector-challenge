@@ -145,6 +145,22 @@ struct SelectedItemStyle: ViewModifier {
     }
 }
 
+/// Card container modifier: rounded background + border overlay
+struct CardStyle: ViewModifier {
+    var cornerRadius: CGFloat = 8
+    var background: Color = .bgCard
+
+    func body(content: Content) -> some View {
+        content
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(Color.borderPrimary, lineWidth: 1)
+            )
+    }
+}
+
 extension View {
     func sectionHeaderStyle() -> some View {
         modifier(SectionHeaderStyle())
@@ -152,5 +168,9 @@ extension View {
 
     func selectedItemStyle(_ isSelected: Bool) -> some View {
         modifier(SelectedItemStyle(isSelected: isSelected))
+    }
+
+    func cardStyle(cornerRadius: CGFloat = 8, background: Color = .bgCard) -> some View {
+        modifier(CardStyle(cornerRadius: cornerRadius, background: background))
     }
 }

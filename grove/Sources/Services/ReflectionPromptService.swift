@@ -18,16 +18,14 @@ private struct ReflectionPromptResponse: Decodable {
 }
 
 /// Protocol for reflection prompt generation.
-@MainActor
 protocol ReflectionPromptServiceProtocol {
-    func generatePrompts(for item: Item, in context: ModelContext) async -> [ReflectionPrompt]
+    @MainActor func generatePrompts(for item: Item, in context: ModelContext) async -> [ReflectionPrompt]
 }
 
 /// Generates contextual reflection prompts using the LLM.
 /// Sends the current item's context plus related items and existing reflections
 /// from the same board to produce personalized, wiki-link-enriched prompts.
 /// Returns empty array on failure — never throws.
-@MainActor
 final class ReflectionPromptService: ReflectionPromptServiceProtocol {
     private let provider: LLMProvider
 
@@ -35,7 +33,7 @@ final class ReflectionPromptService: ReflectionPromptServiceProtocol {
         self.provider = provider
     }
 
-    func generatePrompts(for item: Item, in context: ModelContext) async -> [ReflectionPrompt] {
+    @MainActor func generatePrompts(for item: Item, in context: ModelContext) async -> [ReflectionPrompt] {
         guard LLMServiceConfig.isConfigured else { return [] }
 
         // Only generate if the item has no existing reflections
@@ -71,21 +69,13 @@ final class ReflectionPromptService: ReflectionPromptServiceProtocol {
 
         var relatedContext = ""
         if !boardItems.isEmpty {
-            let descriptions = boardItems.prefix(10).map { related in
-                let reflectionSummary = related.reflections.prefix(2).map {
-                    "\($0.blockType.displayName): \($0.content.prefix(80))"
-                }.joined(separator: "; ")
-                let summary = related.metadata["summary"] ?? ""
-                return "- \"\(related.title)\"\(summary.isEmpty ? "" : " — \(summary)")\(reflectionSummary.isEmpty ? "" : " [reflections: \(reflectionSummary)]")"
-            }.joined(separator: "\n")
+            let descriptions = LLMContextBuilder.itemList(Array(boardItems.prefix(10)), maxItems: 10)
             relatedContext = "\n\nRELATED ITEMS (same board):\n\(descriptions)"
         }
 
         var connectedContext = ""
         if !connectedItems.isEmpty {
-            let descriptions = connectedItems.prefix(5).map { connected in
-                "- \"\(connected.title)\""
-            }.joined(separator: "\n")
+            let descriptions = LLMContextBuilder.itemList(Array(connectedItems.prefix(5)), maxItems: 5)
             connectedContext = "\n\nCONNECTED ITEMS:\n\(descriptions)"
         }
 

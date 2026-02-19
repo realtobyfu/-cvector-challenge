@@ -9,15 +9,13 @@ struct SmartNudge {
 }
 
 /// Protocol for testability.
-@MainActor
 protocol SmartNudgeServiceProtocol {
-    func generateSmartNudge(context: ModelContext) async -> SmartNudge?
+    @MainActor func generateSmartNudge(context: ModelContext) async -> SmartNudge?
 }
 
 /// LLM-backed nudge generator. Sends a summary of the user's boards, recent items,
 /// and engagement stats to the LLM, which returns a single contextual nudge.
 /// Falls back silently if AI is disabled or the LLM fails.
-@MainActor
 final class SmartNudgeService: SmartNudgeServiceProtocol {
     private let provider: LLMProvider
 
@@ -25,13 +23,13 @@ final class SmartNudgeService: SmartNudgeServiceProtocol {
         self.provider = provider
     }
 
-    func generateSmartNudge(context: ModelContext) async -> SmartNudge? {
+    @MainActor func generateSmartNudge(context: ModelContext) async -> SmartNudge? {
         guard LLMServiceConfig.isConfigured else { return nil }
 
         let boards = (try? context.fetch(FetchDescriptor<Board>())) ?? []
         let allItems = (try? context.fetch(FetchDescriptor<Item>())) ?? []
 
-        let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .now
+        let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.stale, to: .now) ?? .now
         let recentItems = allItems.filter { $0.createdAt > twoWeeksAgo && $0.status != .dismissed }
 
         guard !recentItems.isEmpty else { return nil }
@@ -77,7 +75,7 @@ final class SmartNudgeService: SmartNudgeServiceProtocol {
         """
     }
 
-    private func buildUserPrompt(boards: [Board], recentItems: [Item], allItems: [Item]) -> String {
+    @MainActor private func buildUserPrompt(boards: [Board], recentItems: [Item], allItems: [Item]) -> String {
         var parts: [String] = []
 
         // Board summaries
@@ -89,15 +87,8 @@ final class SmartNudgeService: SmartNudgeServiceProtocol {
         parts.append("BOARDS:\n\(boardSummaries)")
 
         // Recent items with reflection status
-        let itemSummaries = recentItems.prefix(30).map { item in
-            let reflected = item.reflections.isEmpty ? "unreflected" : "reflected (\(item.reflections.count) blocks)"
-            let tags = item.tags.prefix(3).map(\.name).joined(separator: ", ")
-            let tagsStr = tags.isEmpty ? "" : " [tags: \(tags)]"
-            let summary = item.metadata["summary"] ?? ""
-            let summaryStr = summary.isEmpty ? "" : " — \(summary)"
-            return "- \"\(item.title)\" (\(item.type.rawValue), \(reflected))\(tagsStr)\(summaryStr)"
-        }.joined(separator: "\n")
-        parts.append("RECENT ITEMS (last 2 weeks):\n\(itemSummaries)")
+        let itemList = LLMContextBuilder.itemList(Array(recentItems.prefix(30)))
+        parts.append("RECENT ITEMS (last 2 weeks):\n\(itemList)")
 
         // Engagement stats
         let totalItems = allItems.count

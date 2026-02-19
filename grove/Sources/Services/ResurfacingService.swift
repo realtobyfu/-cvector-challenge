@@ -1,12 +1,19 @@
 import Foundation
 import SwiftData
 
+/// Protocol for resurfacing service.
+@MainActor
+protocol ResurfacingServiceProtocol {
+    func recordEngagement(for item: Item)
+    func nextResurfaceCandidate(excludingItemIDs: Set<UUID>) -> Item?
+}
+
 /// Manages spaced resurfacing of items based on engagement patterns.
 /// Items enter the queue when they have annotations or connections.
 /// Interval adapts: doubles after engagement, resets after 60 days of inactivity.
 @MainActor
 @Observable
-final class ResurfacingService {
+final class ResurfacingService: ResurfacingServiceProtocol {
     private var modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -31,7 +38,7 @@ final class ResurfacingService {
     /// Check all items and reset intervals for those with 60+ days of no engagement.
     func resetStaleIntervals() {
         let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
-        let sixtyDaysAgo = Calendar.current.date(byAdding: .day, value: -60, to: .now) ?? .now
+        let sixtyDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.deepInactivity, to: .now) ?? .now
 
         for item in allItems where item.isResurfacingEligible && item.status == .active {
             let lastActivity = item.lastEngagedAt ?? item.lastResurfacedAt ?? item.createdAt
@@ -75,8 +82,8 @@ final class ResurfacingService {
     func resurfaceContext(for item: Item) -> String? {
         // Prefer the most recent reflection as context
         if let latestReflection = item.reflections.sorted(by: { $0.createdAt > $1.createdAt }).first {
-            let preview = String(latestReflection.content.prefix(80))
-            let suffix = latestReflection.content.count > 80 ? "..." : ""
+            let preview = String(latestReflection.content.prefix(AppConstants.LLM.reasonMaxLength))
+            let suffix = latestReflection.content.count > AppConstants.LLM.reasonMaxLength ? "..." : ""
             return "Your note: \"\(preview)\(suffix)\""
         }
 

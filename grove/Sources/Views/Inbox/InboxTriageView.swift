@@ -455,7 +455,7 @@ struct InboxTriageView: View {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 guard let url = url else { return }
                 let path = url.path
-                guard ItemViewModel.isSupportedVideoFile(path) else { return }
+                guard CaptureService.isSupportedVideoFile(path) else { return }
                 Task { @MainActor in
                     importDroppedVideo(at: path)
                 }
@@ -467,7 +467,7 @@ struct InboxTriageView: View {
 
     @MainActor
     private func importDroppedVideo(at path: String) {
-        let viewModel = ItemViewModel(modelContext: modelContext)
-        _ = viewModel.createVideoItem(filePath: path)
+        let captureService = CaptureService(modelContext: modelContext)
+        _ = captureService.createVideoItem(filePath: path)
     }
 }

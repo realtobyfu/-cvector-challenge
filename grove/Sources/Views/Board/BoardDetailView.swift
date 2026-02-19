@@ -31,7 +31,6 @@ struct BoardDetailView: View {
     @State private var viewMode: BoardViewMode = .grid
     @State private var sortOption: BoardSortOption = .manual
     @State private var draggingItemID: UUID?
-    @State private var selectedFilterTags: Set<UUID> = []
     @State private var showSynthesisSheet = false
     @State private var showItemPicker = false
     @State private var pickedItems: [Item] = []
@@ -48,33 +47,8 @@ struct BoardDetailView: View {
         return board.items
     }
 
-    /// Flat ordered list of all visible items for J/K navigation
-    private var flatVisibleItems: [Item] {
-        sortedFilteredItems
-    }
-
-    // MARK: - Computed Properties
-
-    private var allBoardTags: [Tag] {
-        var tagSet: [UUID: Tag] = [:]
-        for item in effectiveItems {
-            for tag in item.tags {
-                tagSet[tag.id] = tag
-            }
-        }
-        return tagSet.values.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-    }
-
-    private var filteredItems: [Item] {
-        guard !selectedFilterTags.isEmpty else { return effectiveItems }
-        return effectiveItems.filter { item in
-            let itemTagIDs = Set(item.tags.map(\.id))
-            return selectedFilterTags.isSubset(of: itemTagIDs)
-        }
-    }
-
     private var sortedFilteredItems: [Item] {
-        sortItems(filteredItems)
+        sortItems(effectiveItems)
     }
 
     private var activeNudgesForBoard: [Nudge] {
@@ -83,47 +57,10 @@ struct BoardDetailView: View {
             .filter { ($0.status == .pending || $0.status == .shown) && $0.targetItem != nil && boardItemIDs.contains($0.targetItem!.id) }
     }
 
-    private func computeBoardSuggestions() -> [Suggestion] {
-        var result: [Suggestion] = []
-        let items = effectiveItems
-
-        // Active nudge targeting items in this board
-        if let nudge = activeNudgesForBoard.first {
-            result.append(Suggestion(
-                type: .nudge,
-                title: nudge.displayMessage,
-                reason: nudge.type.actionLabel,
-                item: nudge.targetItem,
-                nudge: nudge
-            ))
-        }
-
-        // Reflect — items with content but no reflections
-        let reflectCandidates = items
-            .filter { $0.status == .active && $0.content != nil && !$0.content!.isEmpty && $0.reflections.isEmpty }
-            .sorted { $0.depthScore > $1.depthScore }
-        if let top = reflectCandidates.first {
-            result.append(Suggestion(type: .reflect, title: top.title, reason: "Has content but no reflections yet", item: top))
-        }
-
-        // Revisit — overdue items in this board
-        let revisitCandidates = items
-            .filter { $0.isResurfacingOverdue }
-            .sorted { $0.depthScore > $1.depthScore }
-        if let top = revisitCandidates.first {
-            result.append(Suggestion(type: .revisit, title: top.title, reason: "Due for spaced review", item: top))
-        }
-
-        return Array(result.prefix(3))
-    }
-
-    private func refreshBoardSuggestions() {
-        boardSuggestions = computeBoardSuggestions()
-    }
+    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 0) {
-            // Capture bar — auto-assigns to this board
             if !board.isSmart {
                 CaptureBarView(currentBoardID: board.id)
             }
@@ -131,22 +68,36 @@ struct BoardDetailView: View {
             if effectiveItems.isEmpty {
                 emptyState
             } else {
-                // Suggestions section
                 if !boardSuggestions.isEmpty {
-                    boardSuggestionsSection
+                    BoardSuggestionsView(
+                        suggestions: boardSuggestions,
+                        isSuggestionsCollapsed: $isSuggestionsCollapsed,
+                        openedItem: $openedItem,
+                        selectedItem: $selectedItem,
+                        onRefresh: refreshBoardSuggestions
+                    )
                 }
 
-                // Tag filter bar
-                if !allBoardTags.isEmpty {
-                    tagFilterBar
-                }
-
-                // Content
                 switch viewMode {
                 case .grid:
-                    gridView
+                    BoardGridView(
+                        items: sortedFilteredItems,
+                        canReorder: sortOption == .manual && !board.isSmart,
+                        selectedItem: $selectedItem,
+                        openedItem: $openedItem,
+                        draggingItemID: $draggingItemID,
+                        itemContextMenu: { item in AnyView(itemContextMenu(for: item)) },
+                        onReorder: moveGridItem
+                    )
                 case .list:
-                    listView
+                    BoardListView(
+                        items: sortedFilteredItems,
+                        canReorder: sortOption == .manual && !board.isSmart,
+                        selectedItem: $selectedItem,
+                        openedItem: $openedItem,
+                        itemContextMenu: { item in AnyView(itemContextMenu(for: item)) },
+                        onMove: moveListItems
+                    )
                 }
             }
         }
@@ -161,7 +112,7 @@ struct BoardDetailView: View {
             }
         }) {
             SynthesisItemPickerSheet(
-                items: filteredItems,
+                items: effectiveItems,
                 scopeTitle: board.title,
                 onConfirm: { items in
                     pickedItems = items
@@ -208,12 +159,8 @@ struct BoardDetailView: View {
             }
             Button("Delete", role: .destructive) {
                 if let item = itemToDelete {
-                    if selectedItem?.id == item.id {
-                        selectedItem = nil
-                    }
-                    if openedItem?.id == item.id {
-                        openedItem = nil
-                    }
+                    if selectedItem?.id == item.id { selectedItem = nil }
+                    if openedItem?.id == item.id { openedItem = nil }
                     modelContext.delete(item)
                     try? modelContext.save()
                 }
@@ -226,32 +173,63 @@ struct BoardDetailView: View {
         }
     }
 
-    // MARK: - Keyboard Handlers (J/K/Enter)
+    // MARK: - Suggestions
+
+    private func computeBoardSuggestions() -> [Suggestion] {
+        var result: [Suggestion] = []
+        let items = effectiveItems
+
+        if let nudge = activeNudgesForBoard.first {
+            result.append(Suggestion(
+                type: .nudge,
+                title: nudge.displayMessage,
+                reason: nudge.type.actionLabel,
+                item: nudge.targetItem,
+                nudge: nudge
+            ))
+        }
+
+        let reflectCandidates = items
+            .filter { $0.status == .active && $0.content != nil && !$0.content!.isEmpty && $0.reflections.isEmpty }
+            .sorted { $0.depthScore > $1.depthScore }
+        if let top = reflectCandidates.first {
+            result.append(Suggestion(type: .reflect, title: top.title, reason: "Has content but no reflections yet", item: top))
+        }
+
+        let revisitCandidates = items
+            .filter { $0.isResurfacingOverdue }
+            .sorted { $0.depthScore > $1.depthScore }
+        if let top = revisitCandidates.first {
+            result.append(Suggestion(type: .revisit, title: top.title, reason: "Due for spaced review", item: top))
+        }
+
+        return Array(result.prefix(3))
+    }
+
+    private func refreshBoardSuggestions() {
+        boardSuggestions = computeBoardSuggestions()
+    }
+
+    // MARK: - Keyboard Handlers
 
     private var boardKeyboardHandlers: some View {
         Group {
-            // J — select next item
             Button("") { navigateItems(by: 1) }
                 .keyboardShortcut("j", modifiers: [])
-                .opacity(0)
-                .frame(width: 0, height: 0)
+                .opacity(0).frame(width: 0, height: 0)
 
-            // K — select previous item
             Button("") { navigateItems(by: -1) }
                 .keyboardShortcut("k", modifiers: [])
-                .opacity(0)
-                .frame(width: 0, height: 0)
+                .opacity(0).frame(width: 0, height: 0)
 
-            // Enter — open selected item
-            Button("") { openSelectedItem() }
+            Button("") { if let item = selectedItem { openedItem = item } }
                 .keyboardShortcut(.return, modifiers: [])
-                .opacity(0)
-                .frame(width: 0, height: 0)
+                .opacity(0).frame(width: 0, height: 0)
         }
     }
 
     private func navigateItems(by offset: Int) {
-        let items = flatVisibleItems
+        let items = sortedFilteredItems
         guard !items.isEmpty else { return }
 
         if let current = selectedItem,
@@ -259,189 +237,7 @@ struct BoardDetailView: View {
             let newIndex = max(0, min(items.count - 1, currentIndex + offset))
             selectedItem = items[newIndex]
         } else {
-            // No selection — select first or last depending on direction
             selectedItem = offset > 0 ? items.first : items.last
-        }
-    }
-
-    private func openSelectedItem() {
-        guard let item = selectedItem else { return }
-        openedItem = item
-    }
-
-    // MARK: - Board Suggestions Section
-
-    private var boardSuggestionsSection: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            HomeSectionHeader(
-                title: "Suggestions",
-                count: boardSuggestions.count,
-                isCollapsed: $isSuggestionsCollapsed
-            )
-
-            if !isSuggestionsCollapsed {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 200, maximum: 350), spacing: Spacing.md)],
-                    spacing: Spacing.md
-                ) {
-                    ForEach(boardSuggestions) { suggestion in
-                        boardSuggestionCard(suggestion)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal)
-        .padding(.top, Spacing.sm)
-    }
-
-    private func boardSuggestionCard(_ suggestion: Suggestion) -> some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(Color.accentSelection)
-                .frame(width: 2)
-
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                HStack {
-                    Text(suggestion.type == .nudge ? (suggestion.nudge?.type.actionLabel ?? "NUDGE").uppercased() : suggestion.type.rawValue)
-                        .font(.groveBadge)
-                        .tracking(0.8)
-                        .foregroundStyle(Color.textSecondary)
-
-                    Spacer()
-
-                    if let nudge = suggestion.nudge {
-                        Button {
-                            dismissBoardNudge(nudge)
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(Color.textMuted)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                HStack(spacing: Spacing.sm) {
-                    Image(systemName: suggestion.nudge?.type.iconName ?? suggestion.type.systemImage)
-                        .font(.groveBodySecondary)
-                        .foregroundStyle(Color.textSecondary)
-                    Text(suggestion.title)
-                        .font(.groveBody)
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(2)
-                }
-
-                if let nudge = suggestion.nudge {
-                    Button {
-                        actOnBoardNudge(nudge)
-                    } label: {
-                        Text(nudge.type.actionLabel)
-                            .font(.groveBadge)
-                            .foregroundStyle(Color.textPrimary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.accentBadge)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Text(suggestion.reason)
-                        .font(.groveBodySecondary)
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
-                }
-            }
-            .padding(.horizontal, Spacing.md)
-            .padding(.vertical, Spacing.sm)
-        }
-        .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
-        .background(Color.bgCard)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.borderPrimary, lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if suggestion.nudge != nil {
-                // nudge cards have their own Button — do nothing on background tap
-            } else if suggestion.type == .reflect, let item = suggestion.item {
-                let prompt = "What are your key thoughts on \"\(item.title)\"?"
-                NotificationCenter.default.post(name: .groveNewNoteWithPrompt, object: prompt)
-            } else if let item = suggestion.item {
-                openedItem = item
-                selectedItem = item
-            }
-        }
-    }
-
-    private func actOnBoardNudge(_ nudge: Nudge) {
-        withAnimation(.easeOut(duration: 0.15)) {
-            nudge.status = .actedOn
-            NudgeSettings.recordAction(type: nudge.type, actedOn: true)
-            try? modelContext.save()
-        }
-        if let item = nudge.targetItem {
-            openedItem = item
-            selectedItem = item
-        }
-        refreshBoardSuggestions()
-    }
-
-    private func dismissBoardNudge(_ nudge: Nudge) {
-        withAnimation(.easeOut(duration: 0.15)) {
-            nudge.status = .dismissed
-            NudgeSettings.recordAction(type: nudge.type, actedOn: false)
-            try? modelContext.save()
-        }
-        refreshBoardSuggestions()
-    }
-
-    // MARK: - Tag Filter Bar
-
-    private var tagFilterBar: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(allBoardTags) { tag in
-                        let isActive = selectedFilterTags.contains(tag.id)
-                        Button {
-                            if isActive {
-                                selectedFilterTags.remove(tag.id)
-                            } else {
-                                selectedFilterTags.insert(tag.id)
-                            }
-                        } label: {
-                            Text(tag.name)
-                                .font(.groveTag)
-                                .foregroundStyle(isActive ? Color.textInverse : Color.textPrimary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(isActive ? Color.bgTagActive : Color.bgCard)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .stroke(isActive ? Color.clear : Color.borderTag, lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if !selectedFilterTags.isEmpty {
-                        Button {
-                            selectedFilterTags.removeAll()
-                        } label: {
-                            Text("Clear")
-                                .font(.groveBodySmall)
-                                .foregroundStyle(Color.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.vertical, Spacing.sm)
-            }
-            Divider()
         }
     }
 
@@ -481,143 +277,7 @@ struct BoardDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Grid View
-
-    @ViewBuilder
-    private func boardGridCard(_ item: Item, canReorder: Bool) -> some View {
-        ItemCardView(item: item, showTags: false, onReadInApp: {
-            openedItem = item
-            selectedItem = item
-        })
-        .clipped()
-        .opacity(canReorder && draggingItemID == item.id ? 0.4 : 1)
-        .onTapGesture(count: 2) {
-            openedItem = item
-            selectedItem = item
-        }
-        .onTapGesture(count: 1) {
-            selectedItem = item
-        }
-        .selectedItemStyle(selectedItem?.id == item.id)
-        .contextMenu { itemContextMenu(for: item) }
-        .onDrag {
-            guard canReorder else { return NSItemProvider() }
-            draggingItemID = item.id
-            return NSItemProvider(object: item.id.uuidString as NSString)
-        }
-        .onDrop(of: [.text], delegate: BoardGridDropDelegate(
-            targetItemID: item.id,
-            draggingItemID: $draggingItemID,
-            isEnabled: canReorder,
-            onReorder: moveGridItem
-        ))
-    }
-
-    private var gridView: some View {
-        let canReorder = sortOption == .manual && !board.isSmart
-        return ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 220, maximum: 420), spacing: Spacing.lg)],
-                spacing: Spacing.lg
-            ) {
-                ForEach(sortedFilteredItems) { item in
-                    boardGridCard(item, canReorder: canReorder)
-                }
-            }
-            .padding(Spacing.lg)
-        }
-    }
-
-    // MARK: - List View
-
-    @ViewBuilder
-    private var listView: some View {
-        if sortOption == .manual && !board.isSmart {
-            List {
-                ForEach(sortedFilteredItems) { item in
-                    listRow(item: item)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            openedItem = item
-                            selectedItem = item
-                        }
-                        .onTapGesture(count: 1) {
-                            selectedItem = item
-                        }
-                        .selectedItemStyle(selectedItem?.id == item.id)
-                        .contextMenu { itemContextMenu(for: item) }
-                }
-                .onMove(perform: moveListItems)
-            }
-            .listStyle(.plain)
-        } else {
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(sortedFilteredItems) { item in
-                        listRow(item: item)
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
-                                openedItem = item
-                                selectedItem = item
-                            }
-                            .onTapGesture(count: 1) {
-                                selectedItem = item
-                            }
-                            .selectedItemStyle(selectedItem?.id == item.id)
-                            .transition(.opacity.combined(with: .slide))
-                            .contextMenu { itemContextMenu(for: item) }
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.borderPrimary, lineWidth: 1)
-                )
-                .animation(.easeInOut(duration: 0.2), value: sortedFilteredItems.map(\.id))
-                .padding()
-            }
-        }
-    }
-
-    private func listRow(item: Item) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: item.type.iconName)
-                .font(.groveMeta)
-                .foregroundStyle(Color.textMuted)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.groveBody)
-                    .foregroundStyle(Color.textPrimary)
-                if let url = item.sourceURL {
-                    Text(url)
-                        .font(.groveMeta)
-                        .foregroundStyle(Color.textTertiary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-
-            GrowthStageIndicator(stage: item.growthStage)
-                .help("\(item.growthStage.displayName) — \(item.depthScore) pts")
-
-            let connectionCount = item.outgoingConnections.count + item.incomingConnections.count
-            if connectionCount > 0 {
-                Label("\(connectionCount)", systemImage: "link")
-                    .font(.groveMeta)
-                    .foregroundStyle(Color.textSecondary)
-            }
-
-            if item.reflections.count > 0 {
-                Label("\(item.reflections.count)", systemImage: "text.alignleft")
-                    .font(.groveMeta)
-                    .foregroundStyle(Color.textSecondary)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-    }
+    // MARK: - Toolbar
 
     private var synthesisButton: some View {
         Button {
@@ -628,17 +288,7 @@ struct BoardDetailView: View {
         }
         .buttonStyle(.bordered)
         .help("Generate an AI synthesis note from items in this board")
-        .disabled(effectiveItems.count < 2)
-    }
-
-    private var addNoteButton: some View {
-        Button {
-            NotificationCenter.default.post(name: .groveNewNote, object: nil)
-        } label: {
-            Label("New Note", systemImage: "square.and.pencil")
-        }
-        .labelStyle(.iconOnly)
-        .help("Add a new note to this board")
+        .disabled(effectiveItems.count < AppConstants.Activity.synthesisMinItems)
     }
 
     private var sortPicker: some View {
@@ -674,11 +324,6 @@ struct BoardDetailView: View {
         .help(viewMode == .grid ? "Switch to list view" : "Switch to grid view")
     }
 
-    private var smartBoardRuleIcon: some View {
-        Image(systemName: "gearshape.2")
-            .help("Smart board rules: \(board.smartRuleTags.map(\.name).joined(separator: board.smartRuleLogic == .and ? " AND " : " OR "))")
-    }
-
     @ViewBuilder
     private var boardToolbarCluster: some View {
         HStack(spacing: Spacing.sm) {
@@ -686,34 +331,10 @@ struct BoardDetailView: View {
             viewModeButton
             synthesisButton
             if board.isSmart && !board.smartRuleTags.isEmpty {
-                smartBoardRuleIcon
+                Image(systemName: "gearshape.2")
+                    .help("Smart board rules: \(board.smartRuleTags.map(\.name).joined(separator: board.smartRuleLogic == .and ? " AND " : " OR "))")
             }
         }
-    }
-
-    // MARK: - Video Drag-and-Drop
-
-    private func handleVideoDrop(providers: [NSItemProvider]) -> Bool {
-        var handled = false
-        for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url = url else { return }
-                let path = url.path
-                guard ItemViewModel.isSupportedVideoFile(path) else { return }
-                Task { @MainActor in
-                    importDroppedVideo(at: path)
-                }
-            }
-            handled = true
-        }
-        return handled
-    }
-
-    @MainActor
-    private func importDroppedVideo(at path: String) {
-        let viewModel = ItemViewModel(modelContext: modelContext)
-        let item = viewModel.createVideoItem(filePath: path, board: board.isSmart ? nil : board)
-        selectedItem = item
     }
 
     // MARK: - Item Context Menu
@@ -760,6 +381,28 @@ struct BoardDetailView: View {
         }
     }
 
+    // MARK: - Video Drag-and-Drop
+
+    private func handleVideoDrop(providers: [NSItemProvider]) -> Bool {
+        var handled = false
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url = url else { return }
+                let path = url.path
+                guard CaptureService.isSupportedVideoFile(path) else { return }
+                Task { @MainActor in
+                    let captureService = CaptureService(modelContext: modelContext)
+                    let item = captureService.createVideoItem(filePath: path, board: board.isSmart ? nil : board)
+                    selectedItem = item
+                }
+            }
+            handled = true
+        }
+        return handled
+    }
+
+    // MARK: - Sort & Reorder
+
     private func sortItems(_ items: [Item]) -> [Item] {
         switch sortOption {
         case .manual:
@@ -776,8 +419,6 @@ struct BoardDetailView: View {
             return items.sorted { $0.depthScore > $1.depthScore }
         }
     }
-
-    // MARK: - Reorder
 
     private func moveGridItem(fromID: UUID, toID: UUID) {
         guard !board.isSmart else { return }

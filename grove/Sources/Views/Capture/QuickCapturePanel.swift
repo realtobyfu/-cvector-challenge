@@ -68,8 +68,8 @@ struct QuickCapturePanel: View {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        let viewModel = ItemViewModel(modelContext: modelContext)
-        _ = viewModel.captureItem(input: trimmed)
+        let captureService = CaptureService(modelContext: modelContext)
+        _ = captureService.captureItem(input: trimmed)
 
         inputText = ""
         dismiss()

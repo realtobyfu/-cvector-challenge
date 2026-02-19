@@ -3,8 +3,15 @@ import AppKit
 
 // MARK: - Export Service
 
+/// Protocol for export service.
 @MainActor
-final class ExportService {
+protocol ExportServiceProtocol {
+    static func exportItem(_ item: Item) -> Data?
+    static func markdownForItem(_ item: Item) -> String
+}
+
+@MainActor
+final class ExportService: ExportServiceProtocol {
 
     // MARK: - Item Export
 

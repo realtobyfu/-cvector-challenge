@@ -29,15 +29,13 @@ private struct AutoTagResponse: Decodable {
 }
 
 /// Protocol for auto-tagging items via LLM.
-@MainActor
 protocol AutoTagServiceProtocol {
-    func tagItem(_ item: Item, in context: ModelContext) async
+    @MainActor func tagItem(_ item: Item, in context: ModelContext) async
 }
 
 /// Generates tags, a one-line summary, and a suggested board for an Item using the LLM.
 /// Gracefully degrades — if the LLM is unavailable or returns bad data,
 /// the item is left unchanged.
-@MainActor
 final class AutoTagService: AutoTagServiceProtocol {
     private let provider: LLMProvider
 
@@ -45,7 +43,7 @@ final class AutoTagService: AutoTagServiceProtocol {
         self.provider = provider
     }
 
-    func tagItem(_ item: Item, in context: ModelContext) async {
+    @MainActor func tagItem(_ item: Item, in context: ModelContext) async {
         guard LLMServiceConfig.isConfigured else { return }
 
         // Gather existing board names to help the LLM suggest one

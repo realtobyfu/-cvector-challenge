@@ -234,7 +234,7 @@ struct LibraryView: View {
                                     Label("Open", systemImage: "doc.text")
                                 }
                                 Button {
-                                    NotificationCenter.default.post(name: .groveDiscussItem, object: item)
+                                    NotificationCenter.default.postDiscussItem(DiscussItemPayload(item: item))
                                 } label: {
                                     Label("Discuss", systemImage: "bubble.left.and.bubble.right")
                                 }
@@ -438,7 +438,7 @@ private struct LibraryRowView: View {
             // Discuss button — visible on hover
             if isHovered {
                 Button {
-                    NotificationCenter.default.post(name: .groveDiscussItem, object: item)
+                    NotificationCenter.default.postDiscussItem(DiscussItemPayload(item: item))
                 } label: {
                     Label("Discuss", systemImage: "bubble.left.and.bubble.right")
                         .font(.groveBadge)

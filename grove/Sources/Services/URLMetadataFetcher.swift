@@ -7,8 +7,13 @@ struct URLMetadata: Sendable {
     var bodyText: String?
 }
 
+/// Protocol for URL metadata fetching.
+protocol URLMetadataFetcherProtocol: Sendable {
+    func fetch(urlString: String) async -> URLMetadata?
+}
+
 /// Fetches OpenGraph and HTML meta tags from a URL to populate Item metadata.
-final class URLMetadataFetcher: Sendable {
+final class URLMetadataFetcher: URLMetadataFetcherProtocol, Sendable {
 
     static let shared = URLMetadataFetcher()
 

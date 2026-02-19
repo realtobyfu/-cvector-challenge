@@ -37,10 +37,10 @@ final class SynthesisService: SynthesisServiceProtocol {
         if items.isEmpty {
             return "No items to synthesize."
         }
-        if items.count < 2 {
-            return "Need at least 2 items for synthesis."
+        if items.count < AppConstants.Activity.synthesisMinItems {
+            return "Need at least \(AppConstants.Activity.synthesisMinItems) items for synthesis."
         }
-        if items.count > 30 {
+        if items.count > AppConstants.Activity.synthesisMaxItems {
             return "Too many items (\(items.count)). Synthesis works best with 3-15 items. Please narrow your scope."
         }
         return nil
@@ -102,7 +102,7 @@ final class SynthesisService: SynthesisServiceProtocol {
         // Copy common tags from source items to synthesis note
         let sourceItems = allItems.filter { result.sourceItemIDs.contains($0.id) }
         let tagCounts = countTags(items: sourceItems)
-        let commonTags = tagCounts.filter { $0.count >= 2 }.sorted { $0.count > $1.count }.prefix(5)
+        let commonTags = tagCounts.filter { $0.count >= AppConstants.Activity.commonTagThreshold }.sorted { $0.count > $1.count }.prefix(5)
         for (tag, _) in commonTags {
             if !item.tags.contains(where: { $0.id == tag.id }) {
                 item.tags.append(tag)
@@ -138,25 +138,8 @@ final class SynthesisService: SynthesisServiceProtocol {
         """
 
         // Build item descriptions with reflections
-        var itemDescriptions: [String] = []
-        for item in items {
-            var desc = "Title: \(item.title)\nType: \(item.type.rawValue)"
-            let tags = item.tags.map(\.name).joined(separator: ", ")
-            if !tags.isEmpty { desc += "\nTags: \(tags)" }
-            if let summary = item.metadata["summary"], !summary.isEmpty {
-                desc += "\nSummary: \(summary)"
-            }
-            if let content = item.content {
-                desc += "\nContent excerpt: \(String(content.prefix(500)))"
-            }
-            // Include reflections — key to S12
-            if !item.reflections.isEmpty {
-                let reflectionTexts = item.reflections.sorted(by: { $0.position < $1.position }).prefix(5).map { block in
-                    "  - [\(block.blockType.displayName)] \(block.content.prefix(200))"
-                }.joined(separator: "\n")
-                desc += "\nUser reflections:\n\(reflectionTexts)"
-            }
-            itemDescriptions.append(desc)
+        let itemDescriptions = items.map {
+            LLMContextBuilder.itemDescription($0, contentLimit: 500)
         }
 
         let userPrompt = """
@@ -214,7 +197,7 @@ final class SynthesisService: SynthesisServiceProtocol {
             .map { $0.key }
 
         let tagCounts = countTags(items: items)
-        let commonTags = tagCounts.filter { $0.count >= 2 }.sorted { $0.count > $1.count }
+        let commonTags = tagCounts.filter { $0.count >= AppConstants.Activity.commonTagThreshold }.sorted { $0.count > $1.count }
 
         progress = "Generating synthesis..."
 
@@ -277,36 +260,7 @@ final class SynthesisService: SynthesisServiceProtocol {
     // MARK: - Helpers
 
     private func extractKeywords(from text: String) -> Set<String> {
-        let stopWords: Set<String> = [
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-            "have", "has", "had", "do", "does", "did", "will", "would", "could",
-            "should", "may", "might", "shall", "can", "need", "dare", "ought",
-            "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "as", "into", "through", "during", "before", "after", "above", "below",
-            "between", "out", "off", "over", "under", "again", "further", "then",
-            "once", "here", "there", "when", "where", "why", "how", "all", "each",
-            "every", "both", "few", "more", "most", "other", "some", "such", "no",
-            "not", "only", "own", "same", "so", "than", "too", "very", "just",
-            "because", "but", "and", "or", "if", "while", "that", "this", "these",
-            "those", "it", "its", "they", "them", "their", "we", "our", "you",
-            "your", "he", "him", "his", "she", "her", "about", "what", "which",
-            "who", "whom", "also", "like", "get", "make", "new", "one", "two"
-        ]
-
-        let words = text.lowercased()
-            .components(separatedBy: .alphanumerics.inverted)
-            .filter { $0.count > 2 && !stopWords.contains($0) }
-
-        var freq: [String: Int] = [:]
-        for word in words {
-            freq[word, default: 0] += 1
-        }
-
-        return Set(
-            freq.sorted { $0.value > $1.value }
-                .prefix(20)
-                .map(\.key)
-        )
+        TextTokenizer.extractKeywords(from: text)
     }
 
     private func countTags(items: [Item]) -> [(tag: Tag, count: Int)] {

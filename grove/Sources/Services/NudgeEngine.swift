@@ -1,16 +1,24 @@
 import Foundation
 import SwiftData
 
+/// Protocol for nudge engine.
+@MainActor
+protocol NudgeEngineProtocol {
+    func startSchedule()
+    func stopSchedule()
+    func generateNudges()
+}
+
 /// Generates nudges based on item status, engagement patterns, and user settings.
 /// Supports two nudge types: resurface (spaced resurfacing) and staleInbox.
 /// Proactive conversation starters are handled by ConversationStarterService on the home screen.
 /// Runs on a configurable schedule (default every 4 hours) and respects daily limits.
 @MainActor
 @Observable
-final class NudgeEngine {
+final class NudgeEngine: NudgeEngineProtocol {
     private var modelContext: ModelContext
-    private var nudgeTimer: Timer?
-    private var readLaterTimer: Timer?
+    private var nudgeTask: Task<Void, Never>?
+    private var readLaterTask: Task<Void, Never>?
     private(set) var resurfacingService: ResurfacingService
     private(set) var readLaterService: ReadLaterService
 
@@ -26,26 +34,30 @@ final class NudgeEngine {
     func startSchedule() {
         processReadLaterQueue()
         generateNudges()
-        let intervalSeconds = TimeInterval(NudgeSettings.scheduleIntervalHours) * 3600
-        nudgeTimer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        let intervalNanos = UInt64(NudgeSettings.scheduleIntervalHours) * 3_600_000_000_000
+        nudgeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: intervalNanos)
+                guard !Task.isCancelled else { break }
                 self?.generateNudges()
             }
         }
 
         // Read-later queue checks run independently so deferred inbox items return on time.
-        readLaterTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        readLaterTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                guard !Task.isCancelled else { break }
                 self?.processReadLaterQueue()
             }
         }
     }
 
     func stopSchedule() {
-        nudgeTimer?.invalidate()
-        nudgeTimer = nil
-        readLaterTimer?.invalidate()
-        readLaterTimer = nil
+        nudgeTask?.cancel()
+        nudgeTask = nil
+        readLaterTask?.cancel()
+        readLaterTask = nil
     }
 
     /// Generate active nudge types: spaced resurfacing and stale inbox.
@@ -85,10 +97,10 @@ final class NudgeEngine {
 
     /// High engagement = user has acted on 3+ nudges in the past 7 days.
     private func userHasHighEngagement() -> Bool {
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.recent, to: .now) ?? .now
         let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
         let recentActedOn = allNudges.filter { $0.status == .actedOn && $0.createdAt > sevenDaysAgo }
-        return recentActedOn.count >= 3
+        return recentActedOn.count >= AppConstants.Nudge.highEngagementThreshold
     }
 
     /// Check if adding another nudge would exceed the daily limit.
@@ -114,8 +126,8 @@ final class NudgeEngine {
         }
         guard !hasPending else { return }
 
-        // Get IDs of items with recently dismissed resurface nudges (within 7 days)
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+        // Get IDs of items with recently dismissed resurface nudges
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.recent, to: .now) ?? .now
         let recentlyDismissedIDs = Set(
             allNudges
                 .filter { $0.type == .resurface && $0.status == .dismissed && $0.createdAt > sevenDaysAgo }
@@ -147,8 +159,8 @@ final class NudgeEngine {
     /// Fallback for items without annotations/connections — uses the original
     /// 14-day stale threshold to still surface forgotten items.
     private func generateLegacyResurfaceNudge(excludingIDs: Set<UUID>, allNudges: [Nudge]) {
-        let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .now
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
+        let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.stale, to: .now) ?? .now
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.cooldown, to: .now) ?? .now
 
         let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
         let staleActiveItems = allItems.filter {
@@ -183,14 +195,14 @@ final class NudgeEngine {
     private func generateStaleInboxNudge() {
         guard canCreateNudge() else { return }
 
-        let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .now
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
+        let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.stale, to: .now) ?? .now
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -AppConstants.Days.cooldown, to: .now) ?? .now
 
         let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
         let staleInboxItems = allItems.filter {
             $0.status == .inbox && $0.createdAt < fourteenDaysAgo
         }
-        guard staleInboxItems.count >= 5 else { return }
+        guard staleInboxItems.count >= AppConstants.Nudge.staleInboxMinCount else { return }
 
         let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
 
