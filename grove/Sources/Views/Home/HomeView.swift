@@ -4,6 +4,8 @@ import SwiftData
 // MARK: - HomeView
 
 struct HomeView: View {
+    private static let maxDiscussionCards = 3
+
     private struct PromptModeSelection {
         let prompt: String
         let label: String
@@ -36,7 +38,8 @@ struct HomeView: View {
     }
 
     private var discussionBubbles: [PromptBubble] {
-        Array(starterService.bubbles.prefix(3))
+        let dynamicSlotCount = max(0, Self.maxDiscussionCards - 1) // Reserve one slot for "New Conversation".
+        return Array(starterService.bubbles.prefix(dynamicSlotCount))
     }
 
     private var recentItems: [Item] {
@@ -112,7 +115,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             HomeSectionHeader(
                 title: "DISCUSSION SUGGESTIONS",
-                count: 1 + discussionBubbles.count,
+                count: min(Self.maxDiscussionCards, 1 + discussionBubbles.count),
                 isCollapsed: $isDiscussionCollapsed
             )
 

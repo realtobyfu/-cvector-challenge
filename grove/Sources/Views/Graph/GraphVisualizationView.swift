@@ -14,6 +14,7 @@ struct GraphVisualizationView: View {
 
     @State private var filterBoard: Board?
     @State private var filterTag: Tag?
+    @State private var filterRelationshipTypes: Set<ConnectionType> = Set(ConnectionType.allCases)
     @State private var scene: GraphScene?
 
     private var filteredItems: [Item] {
@@ -32,51 +33,64 @@ struct GraphVisualizationView: View {
     private var filteredConnections: [Connection] {
         let itemIDs = Set(filteredItems.map(\.id))
         return allConnections.filter { conn in
+            guard filterRelationshipTypes.contains(conn.type) else { return false }
             guard let sourceID = conn.sourceItem?.id, let targetID = conn.targetItem?.id else { return false }
             return itemIDs.contains(sourceID) && itemIDs.contains(targetID)
         }
     }
 
+    private var isBoardOrTagFilterActive: Bool {
+        filterBoard != nil || filterTag != nil
+    }
+
+    private var hasRelationshipTypeFilter: Bool {
+        filterRelationshipTypes.count != ConnectionType.allCases.count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar
-            HStack(spacing: 12) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .foregroundStyle(Color.textSecondary)
-                Text("Knowledge Graph")
-                    .font(.groveBodyMedium)
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .foregroundStyle(Color.textSecondary)
+                    Text("Knowledge Graph")
+                        .font(.groveBodyMedium)
 
-                Spacer()
+                    Spacer()
 
-                // Board filter
-                Picker("Board", selection: $filterBoard) {
-                    Text("All Boards").tag(Board?.none)
-                    Divider()
-                    ForEach(allBoards) { board in
-                        Label(board.title, systemImage: board.icon ?? "folder")
-                            .tag(Board?.some(board))
+                    // Board filter
+                    Picker("Board", selection: $filterBoard) {
+                        Text("All Boards").tag(Board?.none)
+                        Divider()
+                        ForEach(allBoards) { board in
+                            Label(board.title, systemImage: board.icon ?? "folder")
+                                .tag(Board?.some(board))
+                        }
                     }
-                }
-                .frame(width: 160)
+                    .frame(width: 160)
 
-                // Tag filter
-                Picker("Tag", selection: $filterTag) {
-                    Text("All Tags").tag(Tag?.none)
-                    Divider()
-                    ForEach(allTags.sorted(by: { $0.name < $1.name })) { tag in
-                        Text(tag.name).tag(Tag?.some(tag))
+                    // Tag filter
+                    Picker("Tag", selection: $filterTag) {
+                        Text("All Tags").tag(Tag?.none)
+                        Divider()
+                        ForEach(allTags.sorted(by: { $0.name < $1.name })) { tag in
+                            Text(tag.name).tag(Tag?.some(tag))
+                        }
                     }
-                }
-                .frame(width: 140)
+                    .frame(width: 140)
 
-                Button {
-                    rebuildScene()
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .help("Reset Layout")
+                    Button {
+                        rebuildScene()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .help("Reset Layout")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                relationshipLegend
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -88,13 +102,21 @@ struct GraphVisualizationView: View {
             if filteredItems.isEmpty {
                 emptyState
             } else {
-                GraphSceneView(
-                    items: filteredItems,
-                    connections: filteredConnections,
-                    boards: allBoards,
-                    selectedItem: $selectedItem,
-                    scene: $scene
-                )
+                ZStack {
+                    GraphSceneView(
+                        items: filteredItems,
+                        connections: filteredConnections,
+                        boards: allBoards,
+                        selectedItem: $selectedItem,
+                        scene: $scene
+                    )
+
+                    if filteredConnections.isEmpty {
+                        noConnectionsState
+                            .padding(20)
+                            .allowsHitTesting(false)
+                    }
+                }
             }
         }
         .onAppear {
@@ -106,6 +128,42 @@ struct GraphVisualizationView: View {
         .onChange(of: filterTag) {
             rebuildScene()
         }
+        .onChange(of: filterRelationshipTypes) {
+            rebuildScene()
+        }
+    }
+
+    private var relationshipLegend: some View {
+        HStack(spacing: 8) {
+            Text("Relationships")
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textSecondary)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(ConnectionType.allCases, id: \.self) { type in
+                        ConnectionTypeLegendPill(
+                            type: type,
+                            isEnabled: filterRelationshipTypes.contains(type)
+                        ) {
+                            toggleRelationshipType(type)
+                        }
+                    }
+
+                    if hasRelationshipTypeFilter {
+                        Button("Show All") {
+                            filterRelationshipTypes = Set(ConnectionType.allCases)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help("Enable every relationship type.")
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var emptyState: some View {
@@ -113,14 +171,69 @@ struct GraphVisualizationView: View {
             Image(systemName: "point.3.connected.trianglepath.dotted")
                 .font(.system(size: 48))
                 .foregroundStyle(Color.textSecondary)
-            Text("No Items to Graph")
+            Text(isBoardOrTagFilterActive ? "No Items Match Filters" : "No Items to Graph")
                 .font(.groveTitleLarge)
-            Text("Add items and create connections to see your knowledge graph.")
+            Text(emptyStateDescription)
                 .font(.groveBody)
                 .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyStateDescription: String {
+        if isBoardOrTagFilterActive {
+            return "Try a different board or tag filter to populate the graph."
+        }
+        return "Add items and create connections to see your knowledge graph."
+    }
+
+    private var noConnectionsState: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "line.3.crossed.swirl.circle")
+                .foregroundStyle(Color.textSecondary)
+            Text(noConnectionsTitle)
+                .font(.groveBodyMedium)
+            Text(noConnectionsDescription)
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.textSecondary.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private var noConnectionsTitle: String {
+        if filterRelationshipTypes.isEmpty {
+            return "No Relationship Types Selected"
+        }
+        return "No Connections to Display"
+    }
+
+    private var noConnectionsDescription: String {
+        if filterRelationshipTypes.isEmpty {
+            return "Enable one or more relationship types in the legend to draw edges."
+        }
+        if hasRelationshipTypeFilter {
+            return "No edges match the selected relationship filters with the current board/tag view."
+        }
+        if isBoardOrTagFilterActive {
+            return "These items do not have connections between them yet."
+        }
+        return "Create connections between items to reveal relationship paths."
+    }
+
+    private func toggleRelationshipType(_ type: ConnectionType) {
+        if filterRelationshipTypes.contains(type) {
+            filterRelationshipTypes.remove(type)
+        } else {
+            filterRelationshipTypes.insert(type)
+        }
     }
 
     private func rebuildScene() {
@@ -132,6 +245,63 @@ struct GraphVisualizationView: View {
             selectedItem = item
         }
         scene = newScene
+    }
+}
+
+private struct ConnectionTypeLegendPill: View {
+    let type: ConnectionType
+    let isEnabled: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 6) {
+                ConnectionTypeLegendLine(type: type)
+                Text(type.displayLabel)
+                    .font(.groveBodySmall)
+                    .foregroundStyle(isEnabled ? Color.textPrimary : Color.textSecondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(isEnabled ? Color.bgCardHover : Color.bgCard, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.textSecondary.opacity(isEnabled ? 0.35 : 0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.72)
+        .help(isEnabled ? "Hide \(type.displayLabel) edges." : "Show \(type.displayLabel) edges.")
+        .accessibilityLabel("\(type.displayLabel) relationships")
+        .accessibilityHint(
+            isEnabled
+            ? "Currently visible. Activate to hide this relationship type."
+            : "Currently hidden. Activate to show this relationship type."
+        )
+    }
+}
+
+private struct ConnectionTypeLegendLine: View {
+    let type: ConnectionType
+
+    var body: some View {
+        let style = type.graphConnectionStyle
+        Canvas { context, size in
+            var path = Path()
+            let midY = size.height / 2
+            path.move(to: CGPoint(x: 0, y: midY))
+            path.addLine(to: CGPoint(x: size.width, y: midY))
+            context.stroke(
+                path,
+                with: .color(Color(nsColor: style.strokeColor)),
+                style: StrokeStyle(
+                    lineWidth: style.lineWidth,
+                    dash: style.isDashed ? [6, 4] : []
+                )
+            )
+        }
+        .frame(width: 24, height: 10)
+        .accessibilityHidden(true)
     }
 }
 
@@ -352,23 +522,10 @@ class GraphScene: SKScene {
             let edgeShape = SKShapeNode(path: path)
             edgeShape.zPosition = -1
 
-            switch conn.type {
-            case .buildsOn:
-                edgeShape.strokeColor = NSColor.labelColor.withAlphaComponent(0.6)
-                edgeShape.lineWidth = 2
-            case .contradicts:
-                edgeShape.strokeColor = NSColor.labelColor.withAlphaComponent(0.8)
-                edgeShape.lineWidth = 2
-            case .related:
-                edgeShape.strokeColor = NSColor.labelColor.withAlphaComponent(0.3)
-                edgeShape.lineWidth = 1
-                edgeShape.path = dashedPath(from: sourceNode.position, to: targetNode.position)
-            case .inspiredBy:
-                edgeShape.strokeColor = NSColor.labelColor.withAlphaComponent(0.4)
-                edgeShape.lineWidth = 1.5
-            case .sameTopic:
-                edgeShape.strokeColor = NSColor.labelColor.withAlphaComponent(0.3)
-                edgeShape.lineWidth = 1
+            let style = conn.type.graphConnectionStyle
+            edgeShape.strokeColor = style.strokeColor
+            edgeShape.lineWidth = style.lineWidth
+            if style.isDashed {
                 edgeShape.path = dashedPath(from: sourceNode.position, to: targetNode.position)
             }
 
@@ -471,6 +628,49 @@ class GraphScene: SKScene {
             r = 0.5; g = 0.5; b = 0.5
         }
         return NSColor(red: r, green: g, blue: b, alpha: 1)
+    }
+}
+
+private struct GraphConnectionStyle {
+    let strokeColor: NSColor
+    let lineWidth: CGFloat
+    let isDashed: Bool
+}
+
+private extension ConnectionType {
+    var graphConnectionStyle: GraphConnectionStyle {
+        switch self {
+        case .buildsOn:
+            GraphConnectionStyle(
+                strokeColor: NSColor.systemGreen.withAlphaComponent(0.72),
+                lineWidth: 2,
+                isDashed: false
+            )
+        case .contradicts:
+            GraphConnectionStyle(
+                strokeColor: NSColor.systemRed.withAlphaComponent(0.8),
+                lineWidth: 2,
+                isDashed: false
+            )
+        case .related:
+            GraphConnectionStyle(
+                strokeColor: NSColor.labelColor.withAlphaComponent(0.45),
+                lineWidth: 1,
+                isDashed: true
+            )
+        case .inspiredBy:
+            GraphConnectionStyle(
+                strokeColor: NSColor.systemBlue.withAlphaComponent(0.72),
+                lineWidth: 1.5,
+                isDashed: false
+            )
+        case .sameTopic:
+            GraphConnectionStyle(
+                strokeColor: NSColor.systemOrange.withAlphaComponent(0.72),
+                lineWidth: 1,
+                isDashed: true
+            )
+        }
     }
 }
 

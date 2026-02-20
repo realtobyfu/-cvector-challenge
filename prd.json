@@ -164,8 +164,8 @@
         "tuist test passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": "Edge semantics are currently encoded only by subtle line style/opacity with no legend/filter UI (GraphVisualizationView.swift:43-80, GraphVisualizationView.swift:355-373)."
+      "passes": true,
+      "notes": "Graph toolbar now includes a visible relationship legend with toggle chips for all connection types, graph edges use explicit per-type style/color mapping, and board/tag filters now combine with connection-type filters while empty-state copy distinguishes no items from no matching edges; verified with passing tuist test and tuist build."
     },
     {
       "id": "US-012",

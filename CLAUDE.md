@@ -20,6 +20,10 @@ This repo is run with a Ralph-style loop. Each iteration should complete exactly
    - append key learnings to `progress.txt`
    - commit with: `ralph: US-XXX - short title`
 
+## Completion signal
+- When every story in `prd.json` has `passes: true`, output exactly:
+  - `<promise>COMPLETE</promise>`
+
 ## Project-specific guidance
 - App module name is `grove` (lowercase) in code/tests.
 - Prioritize keyboard-first macOS UX: focus behavior, shortcuts, and predictable navigation.
