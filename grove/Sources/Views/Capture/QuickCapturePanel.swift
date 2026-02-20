@@ -4,16 +4,21 @@ import SwiftData
 struct QuickCapturePanel: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @State private var inputText = ""
+    @State private var linkText = ""
+    @State private var showInvalidLink = false
     @FocusState private var isFocused: Bool
+
+    private var validLink: String? {
+        normalizedLink(from: linkText)
+    }
 
     var body: some View {
         VStack(spacing: Spacing.md) {
             HStack(spacing: Spacing.sm) {
-                Image(systemName: "leaf")
+                Image(systemName: "link")
                     .font(.groveItemTitle)
                     .foregroundStyle(Color.textSecondary)
-                Text("Quick Capture")
+                Text("Paste a Link")
                     .font(.groveBodyMedium)
                 Spacer()
                 Button {
@@ -28,68 +33,84 @@ struct QuickCapturePanel: View {
                 .accessibilityHint("Dismisses the quick capture window.")
             }
 
-            TextField("Paste a URL or type a note…", text: $inputText)
-                .textFieldStyle(.plain)
-                .font(.groveBody)
-                .padding(Spacing.sm)
-                .background(Color.bgInput)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.borderInput, lineWidth: 1)
-                )
-                .focused($isFocused)
-                .onSubmit {
-                    capture()
-                }
+            HStack(spacing: Spacing.sm) {
+                TextField("https://example.com", text: $linkText)
+                    .textFieldStyle(.plain)
+                    .font(.groveBody)
+                    .focused($isFocused)
+                    .onSubmit {
+                        capture()
+                    }
+                    .onChange(of: linkText) { _, _ in
+                        showInvalidLink = false
+                    }
 
-            HStack {
-                if !inputText.isEmpty {
-                    let isURL = detectIsURL(inputText)
-                    Image(systemName: isURL ? "link" : "note.text")
-                        .font(.groveMeta)
-                        .foregroundStyle(Color.textSecondary)
-                    Text(isURL ? "Will save as \(isVideoURL(inputText) ? "video" : "article")" : "Will save as note")
-                        .font(.groveMeta)
-                        .foregroundStyle(Color.textSecondary)
+                Button {
+                    capture()
+                } label: {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.groveBody)
+                        .foregroundStyle(validLink == nil ? Color.textTertiary : Color.textSecondary)
                 }
-                Spacer()
-                Text("⏎ to capture")
-                    .font(.groveMeta)
-                    .foregroundStyle(Color.textTertiary)
+                .buttonStyle(.plain)
+                .disabled(validLink == nil)
+                .accessibilityLabel("Capture link")
             }
+            .padding(Spacing.sm)
+            .background(Color.bgInput)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.borderInput, lineWidth: 1)
+            )
+
+            Text(showInvalidLink ? "Enter a valid http(s) link." : "Press Return to capture.")
+                .font(.groveMeta)
+                .foregroundStyle(Color.textTertiary)
         }
         .padding(Spacing.lg)
-        .frame(width: 400)
+        .frame(width: 420)
         .onAppear {
             isFocused = true
         }
     }
 
     private func capture() {
-        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard let validLink else {
+            showInvalidLink = true
+            return
+        }
 
         let captureService = CaptureService(modelContext: modelContext)
-        _ = captureService.captureItem(input: trimmed)
+        _ = captureService.captureItem(input: validLink)
 
-        inputText = ""
+        linkText = ""
+        showInvalidLink = false
         dismiss()
     }
 
-    private func detectIsURL(_ text: String) -> Bool {
+    private func normalizedLink(from text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed),
-              let scheme = url.scheme,
-              ["http", "https"].contains(scheme.lowercased()),
-              url.host != nil else { return false }
-        return true
+        guard !trimmed.isEmpty else { return nil }
+
+        if let direct = validHTTPURL(trimmed) {
+            return direct.absoluteString
+        }
+        if !trimmed.contains("://"), let prefixed = validHTTPURL("https://\(trimmed)") {
+            return prefixed.absoluteString
+        }
+        return nil
     }
 
-    private func isVideoURL(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        return lower.contains("youtube.com/watch")
-            || lower.contains("youtu.be/")
-            || lower.contains("vimeo.com/")
+    private func validHTTPURL(_ raw: String) -> URL? {
+        guard let components = URLComponents(string: raw),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              let host = components.host,
+              !host.isEmpty,
+              let url = components.url else {
+            return nil
+        }
+        return url
     }
 }

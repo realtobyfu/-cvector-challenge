@@ -68,8 +68,12 @@ struct GroveApp: App {
             GroveMenuCommands()
         }
 
-        MenuBarExtra("Grove", systemImage: "leaf") {
+        MenuBarExtra {
             MenuBarView()
+        } label: {
+            Label("Grove", systemImage: "leaf")
+                .labelStyle(.iconOnly)
+                .scaleEffect(x: -1, y: 1)
         }
         .menuBarExtraStyle(.window)
         .modelContainer(modelContainer)
@@ -187,42 +191,123 @@ struct GroveMenuCommands: Commands {
 }
 
 struct MenuBarView: View {
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.modelContext) private var modelContext
+    @State private var linkText = ""
+    @State private var showSaved = false
+    @State private var showInvalidLink = false
+    @FocusState private var isFocused: Bool
+
+    private var validLink: String? {
+        normalizedLink(from: linkText)
+    }
+
+    private var helperText: String {
+        if showSaved {
+            return "Link saved."
+        }
+        if showInvalidLink {
+            return "Enter a valid http(s) link."
+        }
+        return "Paste a link and press Return."
+    }
 
     var body: some View {
-        VStack(spacing: 8) {
-            Button {
-                openWindow(id: "quick-capture")
-            } label: {
-                Label("Quick Capture", systemImage: "plus.circle")
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("Quick Capture")
+                .font(.groveBodyMedium)
+                .foregroundStyle(Color.textPrimary)
+
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "link")
+                    .font(.groveMeta)
+                    .foregroundStyle(Color.textSecondary)
+
+                TextField("https://example.com", text: $linkText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.groveBody)
+                    .focused($isFocused)
+                    .onSubmit {
+                        captureLink()
+                    }
+                    .onChange(of: linkText) { _, _ in
+                        showSaved = false
+                        showInvalidLink = false
+                    }
+
+                Button {
+                    captureLink()
+                } label: {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.groveBody)
+                        .foregroundStyle(validLink == nil ? Color.textTertiary : Color.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(validLink == nil)
+                .accessibilityLabel("Capture link")
             }
-            .keyboardShortcut("k", modifiers: [.command, .shift])
 
-            Divider()
-
-            InboxCountView()
-
-            Divider()
+            Text(helperText)
+                .font(.groveMeta)
+                .foregroundStyle(showSaved ? Color.textSecondary : Color.textTertiary)
 
             Button("Quit Grove") {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")
         }
-        .padding(4)
-    }
-}
-
-struct InboxCountView: View {
-    @Query private var allItems: [Item]
-
-    private var inboxCount: Int {
-        allItems.filter { $0.status == .inbox }.count
+        .padding(Spacing.sm)
+        .frame(width: 320)
+        .onAppear {
+            isFocused = true
+        }
     }
 
-    var body: some View {
-        Label("\(inboxCount) items in Inbox", systemImage: "tray")
-            .font(.groveMeta)
-            .foregroundStyle(Color.textSecondary)
+    private func captureLink() {
+        guard let validLink else {
+            showSaved = false
+            showInvalidLink = true
+            return
+        }
+
+        let captureService = CaptureService(modelContext: modelContext)
+        _ = captureService.captureItem(input: validLink)
+
+        linkText = ""
+        showInvalidLink = false
+        withAnimation(.easeInOut(duration: 0.15)) {
+            showSaved = true
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation(.easeOut(duration: 0.2)) {
+                showSaved = false
+            }
+        }
+    }
+
+    private func normalizedLink(from text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let direct = validHTTPURL(trimmed) {
+            return direct.absoluteString
+        }
+        if !trimmed.contains("://"), let prefixed = validHTTPURL("https://\(trimmed)") {
+            return prefixed.absoluteString
+        }
+        return nil
+    }
+
+    private func validHTTPURL(_ raw: String) -> URL? {
+        guard let components = URLComponents(string: raw),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              let host = components.host,
+              !host.isEmpty,
+              let url = components.url else {
+            return nil
+        }
+        return url
     }
 }
