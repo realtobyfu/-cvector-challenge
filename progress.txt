@@ -7,3 +7,5 @@ Started: Thu Feb 19 22:33:31 HST 2026
 - Added payload parsing tests in `grove/Tests/GroveTests.swift` to guard prompt + seed-ID extraction from `groveStartConversationWithPrompt` notifications.
 - US-003 (2026-02-19): `MarkdownTextView` now emits real link attributes for `[[wiki-links]]` via a custom `grove-wikilink://` URL and resolves taps through `openURL` into the existing `onWikiLinkTap` callback used by chat and reader surfaces.
 - Reader learnings: wrapping markdown in a parent `Button` prevents embedded links from being actionable; moving edit affordance to an explicit header button keeps reflection editing while allowing wiki-link navigation.
+- US-004 (2026-02-19): Dialectics conversation history popover now includes an auto-focused search field with live filtering across conversation titles and visible message content, plus up/down/return keyboard selection and separate empty states for no conversations vs no search results.
+- Keyboard-state learning: keep a dedicated selected conversation ID synchronized with filtered IDs so arrow navigation remains stable as the query changes or conversations are deleted.

@@ -60,8 +60,8 @@
         "tuist test passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "History list exists but has no search control (DialecticalChatPanel.swift:471-540)."
+      "passes": true,
+      "notes": "Dialectics history popover now has an auto-focused search field with live filtering over conversation title + visible message content, keyboard navigation (up/down/return), and distinct empty states for no conversations versus no search matches."
     },
     {
       "id": "US-005",

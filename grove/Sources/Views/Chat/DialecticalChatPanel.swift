@@ -20,6 +20,9 @@ struct DialecticalChatPanel: View {
     @State private var reflectionConversation: Conversation?
     @State private var noteMessage: ChatMessage?
     @State private var conversationToDelete: Conversation?
+    @State private var conversationListQuery = ""
+    @State private var conversationListSelectionID: UUID?
+    @FocusState private var isConversationListSearchFocused: Bool
 
     private var activeConversation: Conversation? {
         selectedConversation
@@ -27,6 +30,22 @@ struct DialecticalChatPanel: View {
 
     private var activeConversations: [Conversation] {
         conversations.filter { !$0.isArchived }
+    }
+
+    private var trimmedConversationListQuery: String {
+        conversationListQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredConversations: [Conversation] {
+        let query = trimmedConversationListQuery
+        guard !query.isEmpty else { return activeConversations }
+        return activeConversations.filter { conversation in
+            conversationMatchesSearch(conversation, query: query)
+        }
+    }
+
+    private var filteredConversationIDs: [UUID] {
+        filteredConversations.map(\.id)
     }
 
     var body: some View {
@@ -477,66 +496,137 @@ struct DialecticalChatPanel: View {
 
             Divider()
 
+            conversationSearchField
+
+            Divider()
+
             if activeConversations.isEmpty {
                 Text("No conversations yet.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textTertiary)
                     .padding(Spacing.md)
+            } else if filteredConversations.isEmpty {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("No search results")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textSecondary)
+                    Text("No matches for \"\(trimmedConversationListQuery)\".")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textTertiary)
+                }
+                .padding(Spacing.md)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(activeConversations) { conv in
-                            HStack(spacing: Spacing.xs) {
-                                Button {
-                                    selectedConversation = conv
-                                    showConversationList = false
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(conv.displayTitle)
-                                                .font(.groveBody)
-                                                .foregroundStyle(Color.textPrimary)
-                                                .lineLimit(1)
-                                            HStack(spacing: 4) {
-                                                Text(conv.trigger.rawValue)
-                                                    .font(.groveBadge)
-                                                    .foregroundStyle(Color.textTertiary)
-                                                Text(conv.updatedAt.formatted(date: .abbreviated, time: .shortened))
-                                                    .font(.groveMeta)
-                                                    .foregroundStyle(Color.textTertiary)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(filteredConversations) { conv in
+                                HStack(spacing: Spacing.xs) {
+                                    Button {
+                                        openConversationFromList(conv)
+                                    } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(conv.displayTitle)
+                                                    .font(.groveBody)
+                                                    .foregroundStyle(Color.textPrimary)
+                                                    .lineLimit(1)
+                                                HStack(spacing: 4) {
+                                                    Text(conv.trigger.rawValue)
+                                                        .font(.groveBadge)
+                                                        .foregroundStyle(Color.textTertiary)
+                                                    Text(conv.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                                                        .font(.groveMeta)
+                                                        .foregroundStyle(Color.textTertiary)
+                                                }
                                             }
+                                            Spacer()
+                                            Text("\(conv.visibleMessages.count) msgs")
+                                                .font(.groveBadge)
+                                                .foregroundStyle(Color.textMuted)
                                         }
-                                        Spacer()
-                                        Text("\(conv.visibleMessages.count) msgs")
-                                            .font(.groveBadge)
+                                        .padding(.horizontal, Spacing.md)
+                                        .padding(.vertical, Spacing.sm)
+                                        .contentShape(Rectangle())
+                                        .selectedItemStyle(conversationListSelectionID == conv.id)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button(role: .destructive) {
+                                        conversationToDelete = conv
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.groveBodySmall)
                                             .foregroundStyle(Color.textMuted)
                                     }
-                                    .padding(.horizontal, Spacing.md)
-                                    .padding(.vertical, Spacing.sm)
-                                    .contentShape(Rectangle())
-                                    .selectedItemStyle(selectedConversation?.id == conv.id)
+                                    .buttonStyle(.plain)
+                                    .help("Delete conversation")
+                                    .padding(.trailing, Spacing.sm)
                                 }
-                                .buttonStyle(.plain)
-
-                                Button(role: .destructive) {
-                                    conversationToDelete = conv
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.groveBodySmall)
-                                        .foregroundStyle(Color.textMuted)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Delete conversation")
-                                .padding(.trailing, Spacing.sm)
+                                .id(conv.id)
+                                Divider().padding(.leading, Spacing.md)
                             }
-                            Divider().padding(.leading, Spacing.md)
+                        }
+                    }
+                    .onChange(of: conversationListSelectionID) {
+                        guard let selectedID = conversationListSelectionID else { return }
+                        withAnimation(.easeInOut(duration: 0.12)) {
+                            proxy.scrollTo(selectedID, anchor: .center)
                         }
                     }
                 }
                 .frame(maxHeight: 300)
             }
         }
-        .frame(width: 300)
+        .frame(width: 320)
+        .onAppear {
+            prepareConversationListPopover()
+        }
+        .onChange(of: conversationListQuery) {
+            syncConversationListSelection()
+        }
+        .onChange(of: filteredConversationIDs) {
+            syncConversationListSelection()
+        }
+        .onKeyPress(.upArrow) {
+            moveConversationListSelection(offset: -1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            moveConversationListSelection(offset: 1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            openSelectedConversationFromList()
+            return .handled
+        }
+    }
+
+    private var conversationSearchField: some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textSecondary)
+
+            TextField("Search by title or message...", text: $conversationListQuery)
+                .textFieldStyle(.plain)
+                .font(.groveBody)
+                .focused($isConversationListSearchFocused)
+                .onSubmit {
+                    openSelectedConversationFromList()
+                }
+
+            if !conversationListQuery.isEmpty {
+                Button {
+                    conversationListQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.sm)
     }
 
     // MARK: - Actions
@@ -585,6 +675,75 @@ struct DialecticalChatPanel: View {
         modelContext.delete(conversation)
         try? modelContext.save()
         conversationToDelete = nil
+    }
+
+    private func conversationMatchesSearch(_ conversation: Conversation, query: String) -> Bool {
+        if conversation.displayTitle.localizedStandardContains(query) {
+            return true
+        }
+        return conversation.visibleMessages.contains { message in
+            message.content.localizedStandardContains(query)
+        }
+    }
+
+    private func prepareConversationListPopover() {
+        conversationListQuery = ""
+        syncConversationListSelection(preferredID: selectedConversation?.id)
+        Task { @MainActor in
+            isConversationListSearchFocused = true
+        }
+    }
+
+    private func syncConversationListSelection(preferredID: UUID? = nil) {
+        let conversations = filteredConversations
+        guard !conversations.isEmpty else {
+            conversationListSelectionID = nil
+            return
+        }
+
+        if let preferredID, conversations.contains(where: { $0.id == preferredID }) {
+            conversationListSelectionID = preferredID
+            return
+        }
+
+        if let currentID = conversationListSelectionID, conversations.contains(where: { $0.id == currentID }) {
+            return
+        }
+
+        if let selectedConversationID = selectedConversation?.id, conversations.contains(where: { $0.id == selectedConversationID }) {
+            conversationListSelectionID = selectedConversationID
+            return
+        }
+
+        conversationListSelectionID = conversations.first?.id
+    }
+
+    private func moveConversationListSelection(offset: Int) {
+        let ids = filteredConversationIDs
+        guard !ids.isEmpty else {
+            conversationListSelectionID = nil
+            return
+        }
+
+        guard let currentID = conversationListSelectionID,
+              let currentIndex = ids.firstIndex(of: currentID) else {
+            conversationListSelectionID = ids.first
+            return
+        }
+
+        let nextIndex = min(max(currentIndex + offset, 0), ids.count - 1)
+        conversationListSelectionID = ids[nextIndex]
+    }
+
+    private func openSelectedConversationFromList() {
+        guard let selectedID = conversationListSelectionID,
+              let conversation = filteredConversations.first(where: { $0.id == selectedID }) else { return }
+        openConversationFromList(conversation)
+    }
+
+    private func openConversationFromList(_ conversation: Conversation) {
+        selectedConversation = conversation
+        showConversationList = false
     }
 
     // MARK: - Save Note Sheet
