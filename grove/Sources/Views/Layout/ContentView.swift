@@ -314,8 +314,11 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
-        if let openedItem {
-            ItemReaderView(item: openedItem)
+        if let openedItemValue = openedItem {
+            ItemReaderView(item: openedItemValue, onNavigateToItem: { item in
+                selectedItem = item
+                openedItem = item
+            })
         } else {
             switch selection {
             case .home:

@@ -5,3 +5,5 @@ Started: Thu Feb 19 22:33:31 HST 2026
 - Added regression tests for starter cap and empty-context fallback in `grove/Tests/GroveTests.swift` to keep LLM/heuristic behavior stable.
 - US-002 (2026-02-19): Home starter handoff now keeps full prompt metadata through mode selection and sends Dialectics launches via `groveStartConversationWithPrompt`, passing `clusterItemIDs` as `seedItemIDs` so ORGANIZE starters carry their intended context.
 - Added payload parsing tests in `grove/Tests/GroveTests.swift` to guard prompt + seed-ID extraction from `groveStartConversationWithPrompt` notifications.
+- US-003 (2026-02-19): `MarkdownTextView` now emits real link attributes for `[[wiki-links]]` via a custom `grove-wikilink://` URL and resolves taps through `openURL` into the existing `onWikiLinkTap` callback used by chat and reader surfaces.
+- Reader learnings: wrapping markdown in a parent `Button` prevents embedded links from being actionable; moving edit affordance to an explicit header button keeps reflection editing while allowing wiki-link navigation.

@@ -5,6 +5,7 @@ import WebKit
 
 struct ItemReaderView: View {
     @Bindable var item: Item
+    var onNavigateToItem: ((Item) -> Void)?
     @Environment(\.modelContext) private var modelContext
     @State private var isEditingContent = false
     @State private var showItemExportSheet = false
@@ -893,6 +894,16 @@ struct ItemReaderView: View {
                 .help("Change type")
 
                 Button {
+                    openBlockForEditing(block)
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.groveMeta)
+                        .foregroundStyle(Color.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Edit")
+
+                Button {
                     blockToDelete = block
                     showDeleteConfirmation = true
                 } label: {
@@ -934,13 +945,8 @@ struct ItemReaderView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Button {
-                    openBlockForEditing(block)
-                } label: {
-                    MarkdownTextView(markdown: block.content)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
+                MarkdownTextView(markdown: block.content, onWikiLinkTap: navigateToItemByTitle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(12)
@@ -1190,6 +1196,18 @@ struct ItemReaderView: View {
             modelContext.delete(block)
             item.updatedAt = .now
             try? modelContext.save()
+        }
+    }
+
+    // MARK: - Wiki-Link Navigation
+
+    private func navigateToItemByTitle(_ title: String) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        let allItems = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+        if let matchedItem = allItems.first(where: { $0.title.localizedCaseInsensitiveCompare(trimmedTitle) == .orderedSame }) {
+            onNavigateToItem?(matchedItem)
         }
     }
 
@@ -1520,59 +1538,79 @@ struct MarkdownTextView: View {
     }
 
     @ViewBuilder
-    private func renderInlineMarkdown(_ text: String) -> some View {
-        if let attributed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            Text(attributed)
-                .font(.custom("IBMPlexSans-Regular", size: 13))
-                .tint(Color.textSecondary)
-        } else {
-            Text(text)
-                .font(.custom("IBMPlexSans-Regular", size: 13))
-        }
-    }
-
-    @ViewBuilder
     private func renderParagraphWithWikiLinks(_ text: String) -> some View {
-        let segments = parseWikiLinks(in: text)
-        if segments.contains(where: { $0.isWikiLink }) {
-            segments.reduce(Text("")) { result, segment in
-                if segment.isWikiLink {
-                    let linkText = Text(segment.text)
-                        .foregroundColor(Color.textSecondary)
-                        .underline()
-                    return result + linkText
-                } else {
-                    if let attributed = try? AttributedString(markdown: segment.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                        return result + Text(attributed)
-                    }
-                    return result + Text(segment.text)
-                }
-            }
+        Text(attributedTextWithWikiLinks(text))
             .font(.custom("IBMPlexSans-Regular", size: 13))
             .tint(Color.textSecondary)
-            .environment(\.openURL, OpenURLAction { url in
-                if url.scheme == "grove-wikilink" {
-                    let title = url.host(percentEncoded: false) ?? ""
-                    onWikiLinkTap?(title)
-                    return .handled
-                }
-                return .systemAction
-            })
-        } else {
-            if let attributed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                Text(attributed)
-                    .font(.custom("IBMPlexSans-Regular", size: 13))
-                    .tint(Color.textSecondary)
-            } else {
-                Text(text)
-                    .font(.custom("IBMPlexSans-Regular", size: 13))
-            }
-        }
+            .environment(\.openURL, OpenURLAction(handler: handleOpenURL))
     }
 
     private struct TextSegment {
         let text: String
         let isWikiLink: Bool
+    }
+
+    private func attributedTextWithWikiLinks(_ text: String) -> AttributedString {
+        let segments = parseWikiLinks(in: text)
+        guard segments.contains(where: { $0.isWikiLink }) else {
+            return parseInlineMarkdown(text)
+        }
+
+        var combined = AttributedString()
+        for segment in segments {
+            if segment.isWikiLink {
+                var linkSegment = AttributedString(segment.text)
+                if let url = wikiLinkURL(for: segment.text) {
+                    linkSegment.link = url
+                }
+                combined.append(linkSegment)
+            } else {
+                combined.append(parseInlineMarkdown(segment.text))
+            }
+        }
+
+        return combined
+    }
+
+    private func parseInlineMarkdown(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+    }
+
+    private func wikiLinkURL(for title: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "grove-wikilink"
+        components.host = "item"
+        components.queryItems = [URLQueryItem(name: "title", value: title)]
+        return components.url
+    }
+
+    private func handleOpenURL(_ url: URL) -> OpenURLAction.Result {
+        guard url.scheme == "grove-wikilink" else {
+            return .systemAction
+        }
+
+        guard let title = wikiLinkTitle(from: url), !title.isEmpty else {
+            return .handled
+        }
+
+        onWikiLinkTap?(title)
+        return .handled
+    }
+
+    private func wikiLinkTitle(from url: URL) -> String? {
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let title = components.queryItems?.first(where: { $0.name == "title" })?.value,
+           !title.isEmpty {
+            return title
+        }
+
+        if let hostTitle = url.host(percentEncoded: false), !hostTitle.isEmpty {
+            return hostTitle
+        }
+
+        let rawPath = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !rawPath.isEmpty else { return nil }
+        return rawPath.removingPercentEncoding ?? rawPath
     }
 
     private func parseWikiLinks(in text: String) -> [TextSegment] {

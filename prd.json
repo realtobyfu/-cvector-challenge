@@ -45,8 +45,8 @@
         "tuist test passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Current renderer styles wiki-link text but does not attach a tappable link target (ItemReaderView.swift:1535-1560)."
+      "passes": true,
+      "notes": "MarkdownTextView now converts [[wiki-links]] into URL-backed attributed link runs and routes taps through a grove-wikilink openURL handler to onWikiLinkTap. ItemReaderView now wires wiki-link taps to title-based item navigation and no longer wraps rendered markdown in a parent button that intercepts link clicks."
     },
     {
       "id": "US-004",
