@@ -6,6 +6,7 @@ struct SearchOverlayView: View {
     @Binding var isPresented: Bool
     @State private var viewModel: SearchViewModel?
     @State private var selectedIndex = 0
+    @FocusState private var isQueryFieldFocused: Bool
 
     /// Optional board scope for board-context search
     var scopeBoard: Board?
@@ -26,6 +27,13 @@ struct SearchOverlayView: View {
         return flat
     }
 
+    private var queryPlaceholder: String {
+        if let scopeBoard {
+            return "Search in \(scopeBoard.title)..."
+        }
+        return "Search Grove..."
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Search field
@@ -34,18 +42,20 @@ struct SearchOverlayView: View {
                     .font(.groveItemTitle)
                     .foregroundStyle(Color.textSecondary)
 
-                TextField(scopeBoard != nil ? "Search in \(scopeBoard!.title)..." : "Search Grove...", text: queryBinding)
+                TextField(queryPlaceholder, text: queryBinding)
                     .textFieldStyle(.plain)
                     .font(.groveItemTitle)
+                    .focused($isQueryFieldFocused)
                     .onSubmit {
+                        viewModel?.flushPendingSearch()
                         selectCurrentResult()
                     }
 
                 if let vm = viewModel, !vm.query.isEmpty {
                     Button {
-                        vm.query = ""
-                        vm.results = [:]
+                        vm.clearSearch()
                         selectedIndex = 0
+                        isQueryFieldFocused = true
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(Color.textSecondary)
@@ -92,6 +102,17 @@ struct SearchOverlayView: View {
             let vm = SearchViewModel(modelContext: modelContext)
             vm.scopeBoard = scopeBoard
             viewModel = vm
+            Task { @MainActor in
+                await Task.yield()
+                isQueryFieldFocused = true
+            }
+        }
+        .onChange(of: flatResults.count) { _, newCount in
+            if newCount == 0 {
+                selectedIndex = 0
+            } else if selectedIndex >= newCount {
+                selectedIndex = max(0, newCount - 1)
+            }
         }
         .onKeyPress(.upArrow) {
             if selectedIndex > 0 {
@@ -105,6 +126,11 @@ struct SearchOverlayView: View {
             }
             return .handled
         }
+        .onKeyPress(.return) {
+            viewModel?.flushPendingSearch()
+            selectCurrentResult()
+            return .handled
+        }
         .onKeyPress(.escape) {
             isPresented = false
             return .handled
@@ -115,8 +141,7 @@ struct SearchOverlayView: View {
         Binding(
             get: { viewModel?.query ?? "" },
             set: { newValue in
-                viewModel?.query = newValue
-                viewModel?.search()
+                viewModel?.updateQuery(newValue)
                 selectedIndex = 0
             }
         )
@@ -146,12 +171,15 @@ struct SearchOverlayView: View {
 
                             ForEach(Array(sectionResults.enumerated()), id: \.element.id) { offset, result in
                                 let globalIndex = runningIndex + offset
-                                resultRow(result: result, isSelected: globalIndex == selectedIndex)
-                                    .id(globalIndex)
-                                    .onTapGesture {
-                                        selectedIndex = globalIndex
-                                        navigateTo(result: result)
-                                    }
+                                Button {
+                                    selectedIndex = globalIndex
+                                    navigateTo(result: result)
+                                } label: {
+                                    resultRow(result: result, isSelected: globalIndex == selectedIndex)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                                .id(globalIndex)
                             }
 
                             let _ = (runningIndex += sectionResults.count)

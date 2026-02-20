@@ -39,52 +39,131 @@ final class SearchViewModel {
     var isSearching = false
 
     /// Optional board scope — when set, item/reflection results are restricted to this board
-    var scopeBoard: Board?
-
-    private var modelContext: ModelContext
-
-    init(modelContext: ModelContext) {
-        self.modelContext = modelContext
+    var scopeBoard: Board? {
+        didSet {
+            if oldValue?.id != scopeBoard?.id {
+                cachedCorpus = nil
+            }
+        }
     }
 
-    /// Perform search across all entity types
+    private var modelContext: ModelContext
+    private let debounceNanoseconds: UInt64
+    private var searchTask: Task<Void, Never>?
+    private var searchGeneration = 0
+    private var cachedCorpus: SearchCorpus?
+
+    private struct SearchCorpus {
+        let items: [Item]
+        let reflections: [ReflectionBlock]
+        let tags: [Tag]
+        let boards: [Board]
+    }
+
+    init(modelContext: ModelContext, debounceNanoseconds: UInt64 = 250_000_000) {
+        self.modelContext = modelContext
+        self.debounceNanoseconds = debounceNanoseconds
+    }
+
+    /// Debounced query update with cancellation for responsive typing.
+    func updateQuery(_ newValue: String) {
+        if query != newValue {
+            query = newValue
+        }
+        scheduleSearch()
+    }
+
+    func clearSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchGeneration += 1
+        query = ""
+        results = [:]
+        isSearching = false
+    }
+
+    /// Preserve compatibility for existing call sites that trigger an immediate search.
     func search() {
+        flushPendingSearch()
+    }
+
+    /// Runs the latest query immediately (used on submit/return).
+    func flushPendingSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchGeneration += 1
+
+        let generation = searchGeneration
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             results = [:]
+            isSearching = false
             return
         }
 
         isSearching = true
-        defer { isSearching = false }
+        performSearchNow(query: trimmed, generation: generation)
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchGeneration += 1
+
+        let generation = searchGeneration
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            results = [:]
+            isSearching = false
+            return
+        }
+
+        isSearching = true
+        let debounce = debounceNanoseconds
+        searchTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: debounce)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.performSearchNow(query: trimmed, generation: generation)
+        }
+    }
+
+    private func performSearchNow(query: String, generation: Int) {
+        let corpus = loadSearchCorpus()
 
         var grouped: [SearchResultType: [SearchResult]] = [:]
 
         // Search items (titles + content)
-        let itemResults = searchItems(query: trimmed)
+        let itemResults = searchItems(query: query, items: corpus.items)
         if !itemResults.isEmpty {
             grouped[.item] = itemResults
         }
 
         // Search reflections
-        let reflectionResults = searchReflections(query: trimmed)
+        let reflectionResults = searchReflections(query: query, reflections: corpus.reflections)
         if !reflectionResults.isEmpty {
             grouped[.reflection] = reflectionResults
         }
 
         // Search tags
-        let tagResults = searchTags(query: trimmed)
+        let tagResults = searchTags(query: query, tags: corpus.tags)
         if !tagResults.isEmpty {
             grouped[.tag] = tagResults
         }
 
         // Search boards
-        let boardResults = searchBoards(query: trimmed)
+        let boardResults = searchBoards(query: query, boards: corpus.boards)
         if !boardResults.isEmpty {
             grouped[.board] = boardResults
         }
 
+        guard generation == searchGeneration else { return }
         results = grouped
+        isSearching = false
+        searchTask = nil
     }
 
     var totalResultCount: Int {
@@ -98,19 +177,11 @@ final class SearchViewModel {
 
     // MARK: - Entity Searches
 
-    private func searchItems(query: String) -> [SearchResult] {
-        let descriptor = FetchDescriptor<Item>()
-        guard let items = try? modelContext.fetch(descriptor) else { return [] }
-
+    private func searchItems(query: String, items: [Item]) -> [SearchResult] {
         let queryLower = query.lowercased()
         var scored: [SearchResult] = []
 
         for item in items {
-            // If scoped to a board, filter
-            if let scope = scopeBoard {
-                guard item.boards.contains(where: { $0.id == scope.id }) else { continue }
-            }
-
             let titleScore = fuzzyScore(queryLower, in: item.title.lowercased())
             let contentScore = item.content.map { fuzzyScore(queryLower, in: $0.lowercased()) * 0.7 } ?? 0
 
@@ -141,20 +212,11 @@ final class SearchViewModel {
         return scored.sorted { $0.score > $1.score }.prefix(15).map { $0 }
     }
 
-    private func searchReflections(query: String) -> [SearchResult] {
-        let descriptor = FetchDescriptor<ReflectionBlock>()
-        guard let reflections = try? modelContext.fetch(descriptor) else { return [] }
-
+    private func searchReflections(query: String, reflections: [ReflectionBlock]) -> [SearchResult] {
         let queryLower = query.lowercased()
         var scored: [SearchResult] = []
 
         for block in reflections {
-            // If scoped to a board, filter by the block's parent item's boards
-            if let scope = scopeBoard {
-                guard let parentItem = block.item,
-                      parentItem.boards.contains(where: { $0.id == scope.id }) else { continue }
-            }
-
             let contentScore = fuzzyScore(queryLower, in: block.content.lowercased())
             guard contentScore > 0 else { continue }
 
@@ -176,11 +238,7 @@ final class SearchViewModel {
         return scored.sorted { $0.score > $1.score }.prefix(10).map { $0 }
     }
 
-    private func searchTags(query: String) -> [SearchResult] {
-        // Tags are not scoped to boards
-        let descriptor = FetchDescriptor<Tag>()
-        guard let tags = try? modelContext.fetch(descriptor) else { return [] }
-
+    private func searchTags(query: String, tags: [Tag]) -> [SearchResult] {
         let queryLower = query.lowercased()
         var scored: [SearchResult] = []
 
@@ -203,10 +261,7 @@ final class SearchViewModel {
         return scored.sorted { $0.score > $1.score }.prefix(8).map { $0 }
     }
 
-    private func searchBoards(query: String) -> [SearchResult] {
-        let descriptor = FetchDescriptor<Board>()
-        guard let boards = try? modelContext.fetch(descriptor) else { return [] }
-
+    private func searchBoards(query: String, boards: [Board]) -> [SearchResult] {
         let queryLower = query.lowercased()
         var scored: [SearchResult] = []
 
@@ -282,6 +337,40 @@ final class SearchViewModel {
         }
 
         return 0
+    }
+
+    private func loadSearchCorpus() -> SearchCorpus {
+        if let cachedCorpus {
+            return cachedCorpus
+        }
+
+        let boardScopeID = scopeBoard?.id
+        var items = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
+        if let boardScopeID {
+            items = items.filter { item in
+                item.boards.contains(where: { $0.id == boardScopeID })
+            }
+        }
+
+        var reflections = (try? modelContext.fetch(FetchDescriptor<ReflectionBlock>())) ?? []
+        if let boardScopeID {
+            reflections = reflections.filter { block in
+                guard let parentItem = block.item else { return false }
+                return parentItem.boards.contains(where: { $0.id == boardScopeID })
+            }
+        }
+
+        let tags = (try? modelContext.fetch(FetchDescriptor<Tag>())) ?? []
+        let boards = (try? modelContext.fetch(FetchDescriptor<Board>())) ?? []
+
+        let corpus = SearchCorpus(
+            items: items,
+            reflections: reflections,
+            tags: tags,
+            boards: boards
+        )
+        cachedCorpus = corpus
+        return corpus
     }
 
     /// Character-by-character subsequence match score

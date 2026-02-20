@@ -75,8 +75,8 @@
         "tuist test passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Current overlay calls search on every setter write and VM fetches full entity sets synchronously (SearchOverlayView.swift:114-122, SearchViewModel.swift:101-232)."
+      "passes": true,
+      "notes": "SearchOverlay now autofocuses its query field on open, routes query updates through a debounced cancellable task API, preserves up/down/return keyboard navigation, and uses semantic Button rows for result activation. SearchViewModel now caches fetched search corpus for the active overlay session so typing no longer triggers full entity refetches on each keystroke."
     },
     {
       "id": "US-006",

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import grove
 
@@ -95,6 +96,37 @@ struct GroveTests {
         #expect(calendar.component(.hour, from: threeDays) == 9)
     }
 
+    @MainActor
+    @Test func searchViewModelDebouncesQueryUpdates() async throws {
+        let context = try makeInMemoryModelContext()
+        let item = Item(title: "SwiftUI Search Overlay", type: .note)
+        context.insert(item)
+        try context.save()
+
+        let viewModel = SearchViewModel(modelContext: context, debounceNanoseconds: 20_000_000)
+        viewModel.updateQuery("swiftui")
+
+        #expect(viewModel.totalResultCount == 0)
+
+        try await Task.sleep(nanoseconds: 80_000_000)
+        #expect(viewModel.totalResultCount == 1)
+    }
+
+    @MainActor
+    @Test func searchViewModelCancelsStaleDebouncedQueries() async throws {
+        let context = try makeInMemoryModelContext()
+        let item = Item(title: "Cancel stale result", type: .note)
+        context.insert(item)
+        try context.save()
+
+        let viewModel = SearchViewModel(modelContext: context, debounceNanoseconds: 25_000_000)
+        viewModel.updateQuery("cancel")
+        viewModel.updateQuery("zzzzzz")
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(viewModel.totalResultCount == 0)
+    }
+
     private func makeDate(
         year: Int,
         month: Int,
@@ -112,6 +144,26 @@ struct GroveTests {
         components.second = 0
         components.timeZone = calendar.timeZone
         return calendar.date(from: components) ?? .now
+    }
+
+    @MainActor
+    private func makeInMemoryModelContext() throws -> ModelContext {
+        let schema = Schema([
+            Item.self,
+            Board.self,
+            Tag.self,
+            Connection.self,
+            Annotation.self,
+            ReflectionBlock.self,
+            Nudge.self,
+            Course.self,
+            Conversation.self,
+            ChatMessage.self,
+        ])
+
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        return ModelContext(container)
     }
 
 }
