@@ -95,6 +95,8 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .help("New Board")
+                    .accessibilityLabel("New board")
+                    .accessibilityHint("Create a board in the sidebar list.")
                 }
                 .contextMenu {
                     Button("New Board...") {
@@ -143,6 +145,8 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .help("New Course")
+                    .accessibilityLabel("New course")
+                    .accessibilityHint("Create a course in the sidebar list.")
                 }
                 .contextMenu {
                     Button("New Course...") {
@@ -184,6 +188,8 @@ struct SidebarView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .help("Delete conversation")
+                                .accessibilityLabel("Delete conversation \(conv.displayTitle)")
+                                .accessibilityHint("Permanently removes this conversation.")
                             }
                             .listRowBackground(
                                 selectedConversation?.id == conv.id

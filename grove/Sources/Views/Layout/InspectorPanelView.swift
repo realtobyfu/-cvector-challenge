@@ -159,6 +159,8 @@ struct InspectorPanelView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.textMuted)
+                .accessibilityLabel("Add connection")
+                .accessibilityHint("Open the connection picker for this item.")
             }
             .padding(.horizontal)
 
@@ -271,6 +273,8 @@ struct InspectorPanelView: View {
                     .foregroundStyle(Color.textTertiary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Delete connection to \(linkedItem?.title ?? "item")")
+            .accessibilityHint("Removes this relationship from the graph.")
         }
         .padding(.horizontal)
     }

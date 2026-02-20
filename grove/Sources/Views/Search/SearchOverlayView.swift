@@ -61,6 +61,8 @@ struct SearchOverlayView: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                    .accessibilityHint("Clears the current search query.")
                 }
 
                 Button {
@@ -74,6 +76,8 @@ struct SearchOverlayView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close search")
+                .accessibilityHint("Dismisses the search overlay.")
             }
             .padding(.horizontal, Spacing.lg)
             .padding(.vertical, Spacing.md)

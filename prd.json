@@ -134,8 +134,8 @@
         "tuist test passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "No explicit accessibility modifiers are currently present across views (rg accessibility on grove/Sources/Views returns no matches)."
+      "passes": true,
+      "notes": "Added explicit accessibility labels/hints for icon-only controls across Home, Sidebar, Dialectics, Capture, Search, and Inspector surfaces; verified Search and Dialectics overlay result interactions remain semantic Button rows (no tap-only gesture handlers)."
     },
     {
       "id": "US-010",

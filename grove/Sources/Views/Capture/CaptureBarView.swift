@@ -50,6 +50,8 @@ private struct BoardSuggestionBanner: View {
                         .foregroundStyle(Color.textTertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss board suggestion")
+                .accessibilityHint("Hides this suggestion without assigning a board.")
             }
 
             HStack(spacing: Spacing.sm) {
@@ -150,6 +152,8 @@ struct CaptureBarView: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Capture item")
+                    .accessibilityHint("Saves the current note or URL.")
                 }
 
                 Text("⏎")
@@ -423,6 +427,8 @@ struct CaptureBarOverlayView: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Capture item")
+                    .accessibilityHint("Saves the current note or URL.")
                 }
 
                 Text("⏎")

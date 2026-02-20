@@ -319,6 +319,8 @@ struct HomeView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close prompt actions")
+                .accessibilityHint("Return to Home sections without opening an action.")
             }
             .padding(.horizontal, Spacing.md)
             .padding(.top, Spacing.md)

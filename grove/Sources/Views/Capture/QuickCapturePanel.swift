@@ -24,6 +24,8 @@ struct QuickCapturePanel: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: [])
+                .accessibilityLabel("Close quick capture")
+                .accessibilityHint("Dismisses the quick capture window.")
             }
 
             TextField("Paste a URL or type a note…", text: $inputText)

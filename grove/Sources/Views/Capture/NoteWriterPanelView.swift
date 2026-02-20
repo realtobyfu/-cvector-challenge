@@ -144,6 +144,8 @@ struct NoteWriterPanelView: View {
                     .foregroundStyle(Color.textMuted)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close note writer")
+            .accessibilityHint("Dismisses this panel without saving.")
         }
         .padding(.horizontal, 40)
         .padding(.top, 20)

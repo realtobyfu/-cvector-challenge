@@ -119,6 +119,8 @@ struct DialecticalChatPanel: View {
                 }
                 .buttonStyle(.plain)
                 .help("Delete conversation")
+                .accessibilityLabel("Delete conversation \(conversation.displayTitle)")
+                .accessibilityHint("Permanently removes this conversation.")
             }
 
             Button {
@@ -130,6 +132,8 @@ struct DialecticalChatPanel: View {
             }
             .buttonStyle(.plain)
             .help("All conversations")
+            .accessibilityLabel("Show all conversations")
+            .accessibilityHint("Opens the conversation history popover.")
             .popover(isPresented: $showConversationList) {
                 conversationListPopover
             }
@@ -143,6 +147,8 @@ struct DialecticalChatPanel: View {
             }
             .buttonStyle(.plain)
             .help("New conversation")
+            .accessibilityLabel("New conversation")
+            .accessibilityHint("Starts a fresh Dialectics conversation.")
 
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -162,6 +168,8 @@ struct DialecticalChatPanel: View {
             }
             .buttonStyle(.plain)
             .help("Close chat")
+            .accessibilityLabel("Close Dialectics")
+            .accessibilityHint("Hides the Dialectics panel.")
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
@@ -391,6 +399,8 @@ struct DialecticalChatPanel: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || dialecticsService.isGenerating)
+                .accessibilityLabel("Send message")
+                .accessibilityHint("Submits your current prompt to Dialectics.")
             }
         }
         .padding(Spacing.md)
@@ -560,6 +570,8 @@ struct DialecticalChatPanel: View {
                                     }
                                     .buttonStyle(.plain)
                                     .help("Delete conversation")
+                                    .accessibilityLabel("Delete conversation \(conv.displayTitle)")
+                                    .accessibilityHint("Permanently removes this conversation.")
                                     .padding(.trailing, Spacing.sm)
                                 }
                                 .id(conv.id)
@@ -623,6 +635,8 @@ struct DialecticalChatPanel: View {
                         .foregroundStyle(Color.textSecondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear conversation search")
+                .accessibilityHint("Clears the current conversation query.")
             }
         }
         .padding(.horizontal, Spacing.md)
