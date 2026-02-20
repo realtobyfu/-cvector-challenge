@@ -75,7 +75,7 @@ final class KnowledgeBaseTools {
     focus_prompt describes what angle or question the synthesis should address. \
     title is the title for the new synthesis item. \
     Use this when the user asks to synthesize, summarize across, or integrate multiple items. \
-    Returns the created item's title and ID.
+    Returns the created item's wiki-link, title, and ID.
 
     Only use tool calls when you need to look up specific information or perform a write action. Most of the time, \
     respond directly in conversational markdown.
@@ -282,7 +282,7 @@ final class KnowledgeBaseTools {
 
         let newItem = service.createSynthesisItem(from: result, title: resolvedTitle, inBoard: nil)
 
-        var response = "Synthesis note created: \"\(newItem.title)\" (ID: \(newItem.id.uuidString))\n"
+        var response = "Synthesis note created: [[\(newItem.title)]] (ID: \(newItem.id.uuidString))\n"
         response += "Sources: \(matchedItems.map { "[[\($0.title)]]" }.joined(separator: ", "))\n"
         if !missingTitles.isEmpty {
             response += "Note: \(missingTitles.count) item(s) not found and skipped: \(missingTitles.joined(separator: ", "))."

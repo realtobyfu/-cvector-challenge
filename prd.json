@@ -192,8 +192,8 @@
         "tuist test passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": "Current tool response returns plain title and ID, with wiki-links only for source items (KnowledgeBaseTools.swift:285-289)."
+      "passes": true,
+      "notes": "Updated `create_synthesis` response formatting to emit the created artifact as `[[Title]]` while preserving the item ID, source wiki-links, and missing-title diagnostics in `KnowledgeBaseTools.createSynthesis`; verified with passing `tuist test`."
     },
     {
       "id": "US-014",
