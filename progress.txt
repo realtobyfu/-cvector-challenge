@@ -21,6 +21,15 @@ Started: Fri Feb 20 23:04:27 HST 2026
 - Removed old `.chart-header`, `.chart-title`, `.chart-controls` CSS classes
 - Vite dev server needs explicit `npx vite --port 5173` when `npm run dev` doesn't bind
 
+## Iteration 3 — US-007: Restyle AssetTable with inline readings
+- Replaced Ant Table + expandable rows with native HTML table
+- Readings shown inline (flex-wrap) directly in the row, not as boxed chips
+- METRIC_DISPLAY_NAMES lookup handles special cases (rpm → RPM)
+- formatValue() handles thousands with toLocaleString
+- Removed Ant Table/Tag imports — bundle dropped ~345 KB
+- Status dot uses inline style with STATUS_COLORS map (var(--green) etc.)
+- CSS classes match design-reference.html exactly: .asset-table, .a-name, .a-type, .a-status, .readings, .r-item, .r-label, .r-val, .r-unit
+
 ### Codebase Patterns
 - Backend python: use `.venv/bin/python3` in backend/ dir
 - CSS vars defined in :root in app.css — always use var() references
