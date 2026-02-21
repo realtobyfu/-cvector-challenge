@@ -24,6 +24,14 @@ struct AISettingsView: View {
     private var tracker: TokenTracker { TokenTracker.shared }
     private var effectiveProviderType: LLMProviderType { LLMServiceConfig.effectiveProviderType }
     private var isBYOEnabled: Bool { BuildFlags.isBYOEnabled }
+    private var monthlyUsageRatio: Double {
+        let budget = tracker.monthlyBudget
+        guard budget > 0 else { return 0 }
+        return Double(tracker.currentMonthTokens) / Double(budget)
+    }
+    private var showUsageSection: Bool {
+        isBYOEnabled || monthlyUsageRatio >= 0.5
+    }
 
     var body: some View {
         Form {
@@ -149,51 +157,67 @@ struct AISettingsView: View {
                 }
             }
 
-            Section("Usage") {
-                HStack {
-                    Text("Total tokens")
-                        .font(.groveBodySecondary)
-                        .foregroundStyle(Color.textPrimary)
-                    Spacer()
-                    Text(formatNumber(tracker.totalTokens))
-                        .font(.custom("IBMPlexMono-SemiBold", size: 13))
-                        .foregroundStyle(Color.textPrimary)
-                }
+            if showUsageSection {
+                Section("Usage") {
+                    if isBYOEnabled {
+                        HStack {
+                            Text("Total tokens")
+                                .font(.groveBodySecondary)
+                                .foregroundStyle(Color.textPrimary)
+                            Spacer()
+                            Text(formatNumber(tracker.totalTokens))
+                                .font(.custom("IBMPlexMono-SemiBold", size: 13))
+                                .foregroundStyle(Color.textPrimary)
+                        }
 
-                HStack {
-                    Text("Total AI calls")
-                        .font(.groveBodySecondary)
-                        .foregroundStyle(Color.textPrimary)
-                    Spacer()
-                    Text(formatNumber(tracker.callCount))
-                        .font(.custom("IBMPlexMono-SemiBold", size: 13))
-                        .foregroundStyle(Color.textPrimary)
-                }
+                        HStack {
+                            Text("Total AI calls")
+                                .font(.groveBodySecondary)
+                                .foregroundStyle(Color.textPrimary)
+                            Spacer()
+                            Text(formatNumber(tracker.callCount))
+                                .font(.custom("IBMPlexMono-SemiBold", size: 13))
+                                .foregroundStyle(Color.textPrimary)
+                        }
 
-                if effectiveProviderType == .groq {
-                    HStack {
-                        Text("Estimated cost")
-                            .font(.groveBodySecondary)
-                            .foregroundStyle(Color.textPrimary)
-                        Spacer()
-                        Text(formatCost(tracker.estimatedCost))
-                            .font(.custom("IBMPlexMono-SemiBold", size: 13))
-                            .foregroundStyle(Color.textPrimary)
+                        if effectiveProviderType == .groq {
+                            HStack {
+                                Text("Estimated cost")
+                                    .font(.groveBodySecondary)
+                                    .foregroundStyle(Color.textPrimary)
+                                Spacer()
+                                Text(formatCost(tracker.estimatedCost))
+                                    .font(.custom("IBMPlexMono-SemiBold", size: 13))
+                                    .foregroundStyle(Color.textPrimary)
+                            }
+                        }
+
+                        DisclosureGroup("Advanced usage and limits", isExpanded: $showAdvancedUsage) {
+                            usageByService
+                                .padding(.top, 4)
+
+                            budgetControls
+                                .padding(.top, 8)
+
+                            Button("Reset Usage") {
+                                tracker.resetAll()
+                                refreshID = UUID()
+                            }
+                            .padding(.top, 4)
+                        }
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: monthlyUsageRatio >= 1.0 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
+                                .foregroundStyle(Color.textSecondary)
+                            Text("Cloud usage is at \(formatPercent(monthlyUsageRatio)) of this month's limit.")
+                                .font(.groveBodySmall)
+                                .foregroundStyle(Color.textSecondary)
+                        }
+
+                        Text(monthlyUsageRatio >= 1.0 ? "Cloud usage has reached the monthly limit." : "Usage details stay hidden until account usage is elevated.")
+                            .font(.groveBadge)
+                            .foregroundStyle(Color.textTertiary)
                     }
-                }
-
-                DisclosureGroup("Advanced usage and limits", isExpanded: $showAdvancedUsage) {
-                    usageByService
-                        .padding(.top, 4)
-
-                    budgetControls
-                        .padding(.top, 8)
-
-                    Button("Reset Usage") {
-                        tracker.resetAll()
-                        refreshID = UUID()
-                    }
-                    .padding(.top, 4)
                 }
             }
 
@@ -383,6 +407,12 @@ struct AISettingsView: View {
 
     private func formatCost(_ cost: Double) -> String {
         String(format: "$%.4f", cost)
+    }
+
+    private func formatPercent(_ ratio: Double) -> String {
+        let clamped = max(0, ratio)
+        let percent = Int((clamped * 100).rounded())
+        return "\(percent)%"
     }
 
     private func displayName(for service: String) -> String {
