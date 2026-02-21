@@ -1,213 +1,141 @@
 {
-  "project": "grove",
-  "branchName": "ralph/ux-feature-alignment-v3",
-  "description": "Feature + UI/UX alignment pass based on current code reality (Feb 2026): tighten home experience, fix Dialectics interaction gaps, align nudge/config surfaces with implemented behavior, improve accessibility and visual readability, and remove high-friction inconsistencies before the next autonomous loop.",
+  "project": "cvector-plant-monitor",
+  "branchName": "ralph/terminal-light-redesign",
+  "description": "Restyle the plant monitor frontend from V1 (dark industrial) to V6 (Terminal Light) — white background, IBM Plex Mono, brutalist structure, green accents, inline readings",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Home prompt density and fallback behavior are decision-light",
-      "description": "As a user, I want Home discussion starters to be focused (2-3 max) with a clear fallback, so opening Grove feels inviting rather than noisy.",
+      "title": "Set up Terminal Light design foundation",
+      "description": "As a developer, I need the CSS variables, font imports, and Ant Design theme tokens updated to match the Terminal Light design system before restyling components.",
       "acceptanceCriteria": [
-        "Home discussion starter cards show at most 3 contextual bubbles plus the existing \"New Conversation\" card",
-        "ConversationStarterService returns at most 3 bubbles from both LLM and heuristic paths",
-        "When no context is available, Home still shows a single meaningful fallback starter instead of an empty section",
-        "Existing caching behavior (8 hour TTL) remains intact",
-        "tuist test passes"
+        "Import IBM Plex Mono (400, 500, 600, 700) from Google Fonts in index.html",
+        "Replace all CSS custom properties in app.css with the DESIGN.md color palette",
+        "Update Ant Design ConfigProvider in main.jsx: disable dark algorithm, set custom tokens (colorPrimary: #1a7a4f, fontFamily: IBM Plex Mono, borderRadius: 0, colorBgContainer: #ffffff)",
+        "Page background is white (#ffffff), all text renders in IBM Plex Mono",
+        "npm run build passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Capped Home starters at 3 in both UI and service paths (LLM parse, heuristic generation, and cached load), and added a guaranteed single REFLECT fallback bubble when context is empty; verified with new service tests and passing tuist test/build."
+      "notes": "Read DESIGN.md for the full color palette. Remove JetBrains Mono and IBM Plex Sans references."
     },
     {
       "id": "US-002",
-      "title": "Prompt bubble handoff preserves context and user intent",
-      "description": "As a user, when I tap a Home starter (especially ORGANIZE), I want the resulting Dialectics session to carry that context as my first message with proper seed items.",
+      "title": "Restyle header to Terminal Light",
+      "description": "As a user, I want the header to show the cv::plant_monitor branding with the facility name and live indicator in the new light style.",
       "acceptanceCriteria": [
-        "Prompt mode selection preserves bubble metadata (including clusterItemIDs) instead of only prompt/label",
-        "Opening Dialectics from a starter routes through groveStartConversationWithPrompt, creating a first user message (not assistant-injected display text)",
-        "ORGANIZE bubbles pass cluster item IDs into conversation seed context",
-        "Existing \"Start Writing\" action from prompt mode remains available",
-        "tuist test passes"
+        "Header has white background, 2px solid #1a1a1a bottom border, 52px height",
+        "Left side shows 'cv::plant_monitor' (cv in green) + pipe separator + facility selector",
+        "Right side shows UTC timestamp and live dot with pulse animation in green",
+        "Facility selector dropdown is styled to match (monospace, subtle border)",
+        "npm run build passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Home prompt-mode state now preserves full bubble metadata (including clusterItemIDs), and \"Open Dialectic Chat\" routes through groveStartConversationWithPrompt with seedItemIDs so starters create a first user message via DialecticsService.sendMessage instead of assistant-injected display text."
+      "notes": "See design-reference.html header section. The pipe separator is a styled span."
     },
     {
       "id": "US-003",
-      "title": "Wiki-links are truly interactive in rendered markdown",
-      "description": "As a user, wiki-links shown in Dialectics and reader surfaces should behave like actual links so I can navigate reliably from AI output.",
+      "title": "Add section labels with > prefix",
+      "description": "As a user, I want clear section labels above each dashboard area that match the terminal aesthetic.",
       "acceptanceCriteria": [
-        "MarkdownTextView renders wiki-link segments as tappable link/button elements, not only underlined text styling",
-        "Tapping a wiki-link triggers existing item navigation callback",
-        "Behavior is consistent anywhere MarkdownTextView is used (chat and item reader)",
-        "No regressions to markdown formatting for non-link text",
-        "tuist test passes"
+        "Each section (status, metrics, chart, assets) has a label above it",
+        "Labels are 10px, 700 weight, uppercase, 2.5px letter-spacing, color --text-3",
+        "Each label is prefixed with '> ' in --green color",
+        "Labels read: 'system status', 'facility metrics', 'time series', 'asset registry'",
+        "npm run build passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "MarkdownTextView now converts [[wiki-links]] into URL-backed attributed link runs and routes taps through a grove-wikilink openURL handler to onWikiLinkTap. ItemReaderView now wires wiki-link taps to title-based item navigation and no longer wraps rendered markdown in a parent button that intercepts link clicks."
+      "notes": "These can be a simple reusable SectionLabel component or just CSS class applied in App.jsx."
     },
     {
       "id": "US-004",
-      "title": "Conversation history is searchable in Dialectics",
-      "description": "As a user, I want to search past conversations by title and message content so prior reasoning is actually retrievable.",
+      "title": "Restyle StatusOverview to pill format",
+      "description": "As an operator, I want status counts displayed as individual tinted pills instead of a connected bar.",
       "acceptanceCriteria": [
-        "Conversation popover includes a search field with live filtering",
-        "Search matches conversation title and visible message content",
-        "Keyboard support remains intact (arrow navigation + return to open)",
-        "If no matches, empty state clearly distinguishes \"no conversations\" from \"no search results\"",
-        "tuist test passes"
+        "Status pills are individual elements in a flex row with 10px gap",
+        "Each pill shows count (24px, 700 weight) + label (10px, uppercase)",
+        "Operational pill: green border, #eaf6f0 background, green text",
+        "Warning pill: amber border, #fdf3e4 background, amber text",
+        "Critical and offline pills use default border with semantic text color",
+        "Total pill has default border, dark text",
+        "npm run build passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Dialectics history popover now has an auto-focused search field with live filtering over conversation title + visible message content, keyboard navigation (up/down/return), and distinct empty states for no conversations versus no search matches."
+      "notes": "See DESIGN.md Status Pills section. Remove any Ant Design Card wrappers if present."
     },
     {
       "id": "US-005",
-      "title": "Global search overlay gets focus, debouncing, and async-safe search",
-      "description": "As a keyboard-first user, when opening global search I expect immediate typing focus and responsive results even on larger datasets.",
+      "title": "Restyle MetricCards with top accent lines",
+      "description": "As an operator, I want metric cards on a white background with colored top accent lines and the // detail format.",
       "acceptanceCriteria": [
-        "Search text field auto-focuses when SearchOverlay opens",
-        "Overlay search is debounced with cancellation (task-based) rather than firing full synchronous fetches per keypress",
-        "Search results still support up/down/return keyboard navigation",
-        "Row activation uses accessible button semantics instead of tap-only gestures",
-        "tuist test passes"
+        "Cards in a 4-column grid with 14px gap",
+        "Each card: 1px border, 20px padding, white background",
+        "3px colored top accent line (green for power, blue for consumption, amber for steam, neutral for others)",
+        "Label: 10px uppercase, --text-3",
+        "Value: 34px, 700 weight, --text. Unit: 14px, --text-3",
+        "Detail text uses // separator (e.g., '3 assets // avg 437.3')",
+        "Hover: border darkens",
+        "npm run build passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "SearchOverlay now autofocuses its query field on open, routes query updates through a debounced cancellable task API, preserves up/down/return keyboard navigation, and uses semantic Button rows for result activation. SearchViewModel now caches fetched search corpus for the active overlay session so typing no longer triggers full entity refetches on each keystroke."
+      "notes": "The accent line is a CSS ::before pseudo-element. See DESIGN.md Metric Cards section."
     },
     {
       "id": "US-006",
-      "title": "Nudge settings and nudge model are aligned with the simplified engine",
-      "description": "As a user and developer, I want nudge controls to match what is actually generated, so settings are trustworthy and maintenance complexity drops.",
+      "title": "Restyle TimeSeriesChart to Terminal Light",
+      "description": "As an operator, I want the chart area to match the light theme with proper line colors and styled time-range buttons.",
       "acceptanceCriteria": [
-        "Nudge settings UI exposes only active categories and controls (resurface, stale inbox, cadence, resurfacing queue controls)",
-        "Legacy toggles/analytics rows for streak, continue-course, connection prompts, and smart nudge categories are removed from settings",
-        "NudgeType and NudgeSettings are cleaned up (or explicitly deprecated) so dead categories are not treated as active configuration",
-        "Weekly digest controls are moved out of Nudge settings or clearly marked as manual-only configuration",
-        "tuist test passes"
+        "Chart container: 1px border, white background",
+        "Header shows metric name with green highlight text, time-range button strip on right",
+        "Time buttons: connected strip, monospace, active = black fill + white text, others = subtle border",
+        "Chart area: light grid lines (#f0eeea), axis labels in --text-4",
+        "Line colors: green (#1a7a4f) solid for primary, amber (#b06e14) dashed for secondary, blue (#3a6ba5) solid for tertiary",
+        "Gradient fills: 8% opacity, fading to transparent",
+        "Footer: --bg-subtle background with legend showing color bars + current values",
+        "npm run build passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Nudge settings now expose only active engine controls (resurface, stale inbox, cadence, resurfacing queue). Removed legacy/smart toggles and analytics rows, marked weekly digest as manual-only, and simplified NudgeSettings so only active categories are configurable while legacy NudgeType cases remain compatibility-only and return false from isEnabled."
+      "notes": "Update Recharts stroke/fill props and the CSS around the chart. See DESIGN.md chart spec."
     },
     {
       "id": "US-007",
-      "title": "Quick Capture shortcut is wired end-to-end",
-      "description": "As a user, pressing Cmd+Shift+K from menu commands should always open Quick Capture, not post a dead notification.",
+      "title": "Restyle AssetTable with inline readings (Option A)",
+      "description": "As an operator, I want to see asset readings as inline label-value pairs with full metric names, not boxed chips with abbreviations.",
       "acceptanceCriteria": [
-        "Quick Capture command opens the quick-capture window (or intentionally chosen capture surface) reliably",
-        "No orphan notification path remains for groveQuickCapture unless a matching receiver is added",
-        "Shortcut behavior is consistent between menu command and menu bar utility",
-        "tuist test passes"
+        "Table uses proper HTML table (or Ant Table) with styled header",
+        "Header row: --bg-subtle background, 2px bottom border, 9px uppercase labels",
+        "Body rows: 16px vertical padding, 1px bottom border, hover = --bg-subtle",
+        "Asset name: 700 weight. Type: 11px uppercase, --text-3",
+        "Status: colored dot (7px) + text in matching color",
+        "Readings: inline flex-wrap pairs — 'Temperature 542.8 °C' not 'Temp 542.8°C'",
+        "Reading labels: 12px, 500 weight, --text-3. Values: 12px, 700, --text. Units: 11px, 400, --text-4",
+        "Full metric names used everywhere (Temperature, Power Output, Flow Rate, Vibration, Pressure, Efficiency, Steam Flow, Voltage, Current)",
+        "npm run build passes"
       ],
       "priority": 7,
-      "passes": true,
-      "notes": "Quick Capture command now opens `openWindow(id: \"quick-capture\")` directly (matching MenuBarView), and the orphan `.groveQuickCapture` notification path was removed so Cmd+Shift+K is consistent across command menu and menu bar."
+      "passes": false,
+      "notes": "This is the most important visual change. See DESIGN.md anti-patterns — NO boxed chips, NO abbreviated labels. The formatMetricName() utility should map snake_case API names to proper display names."
     },
     {
       "id": "US-008",
-      "title": "Naming and shortcut docs match actual product behavior",
-      "description": "As a user, I want UI language and shortcut documentation to match what the app does, so trust and learnability stay high.",
+      "title": "Add page footer and final polish",
+      "description": "As a user, I want a clean footer and consistent spacing across all sections.",
       "acceptanceCriteria": [
-        "User-facing strings use \"Dialectics\" consistently (replace remaining \"Dialectical Chat\"/\"Dialectic\" wording where intended)",
-        "Shortcuts settings copy matches command menu labels and keys exactly",
-        "Shortcut docs include currently available chat toggle shortcut",
-        "Go-to-home labeling mismatch is resolved",
-        "tuist test passes"
+        "Footer: 1px top border, 10px text in --text-4",
+        "Left: 'cv::plant_monitor v1.0 // fastapi + react + ant design'",
+        "Right: 'polling: 15s // data gen: 30s'",
+        "Consistent 36px gap between sections",
+        "Content area max-width 1400px, centered, 32px horizontal padding",
+        "No remaining dark-mode artifacts (dark backgrounds, light-on-dark text)",
+        "npm run build passes"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "Standardized user-facing naming to \"Dialectics\" across chat/home/settings surfaces, updated the View command label to \"Toggle Dialectics\", and aligned Shortcuts settings with menu behavior (Go to Home, added ⌘⇧D toggle row, matched Export Selected Item... label, removed stale Export Board row)."
-    },
-    {
-      "id": "US-009",
-      "title": "Accessibility baseline pass for control-heavy surfaces",
-      "description": "As a VoiceOver and keyboard user, I need icon-heavy controls to expose clear labels/hints so the app is operable without sighted inference.",
-      "acceptanceCriteria": [
-        "Icon-only buttons in Home, Sidebar, Chat, Capture, Search, and Inspector have explicit accessibility labels",
-        "Key actions include concise accessibility hints where behavior is not obvious",
-        "Tap-only result rows in overlays are converted to semantic button interactions",
-        "Accessibility coverage is documented in a brief checklist note in progress.txt for future stories",
-        "tuist test passes"
-      ],
-      "priority": 9,
-      "passes": true,
-      "notes": "Added explicit accessibility labels/hints for icon-only controls across Home, Sidebar, Dialectics, Capture, Search, and Inspector surfaces; verified Search and Dialectics overlay result interactions remain semantic Button rows (no tap-only gesture handlers)."
-    },
-    {
-      "id": "US-010",
-      "title": "Design token contrast meets readability targets",
-      "description": "As a user, secondary and tertiary text should remain readable in both themes so metadata and helper copy are not visually lost.",
-      "acceptanceCriteria": [
-        "Update color tokens so regular-size text usage meets WCAG AA 4.5:1 where applicable on primary reading surfaces",
-        "At minimum, textSecondary/textTertiary/textMuted combinations used in common UI metadata are brought to acceptable contrast",
-        "Include a repeatable script/check command in notes that reports key contrast pairs for light and dark",
-        "No major visual regressions to selected/active states",
-        "tuist test passes"
-      ],
-      "priority": 10,
-      "passes": true,
-      "notes": "Raised textSecondary/textTertiary/textMuted token contrast in light + dark themes to meet WCAG AA across primary metadata surfaces (bgPrimary/bgCard/bgSidebar/bgInspector), and added a repeatable checker: `python3 scripts/check_token_contrast.py` (current lowest reported ratio: 4.53)."
-    },
-    {
-      "id": "US-011",
-      "title": "Graph view gains relationship legend and type filters",
-      "description": "As a user, I need to understand what graph edges mean at a glance and selectively inspect relationship types.",
-      "acceptanceCriteria": [
-        "Graph toolbar includes a visible legend for edge styles/colors by connection type",
-        "Users can toggle connection-type filters (buildsOn, contradicts, related, inspiredBy, sameTopic)",
-        "Board and tag filters continue to work with relationship filters",
-        "Empty state messaging updates to reflect active filters",
-        "tuist test passes"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Graph toolbar now includes a visible relationship legend with toggle chips for all connection types, graph edges use explicit per-type style/color mapping, and board/tag filters now combine with connection-type filters while empty-state copy distinguishes no items from no matching edges; verified with passing tuist test and tuist build."
-    },
-    {
-      "id": "US-012",
-      "title": "Keyboard shortcut handling is scoped and non-brittle",
-      "description": "As a keyboard user, j/k and triage shortcuts should work predictably without hidden zero-size button hacks that can conflict with text input.",
-      "acceptanceCriteria": [
-        "Replace hidden zero-size button shortcut handlers in InboxTriage and BoardDetail with scoped key handling",
-        "Keyboard actions are disabled when a text field/editor is focused",
-        "Existing shortcuts (j/k/1/2/3/enter) retain behavior within their intended view context",
-        "tuist test passes"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": "Replaced hidden zero-size shortcut buttons in Inbox triage and board detail with scoped onKeyPress handlers (`j/k/1/2/3/return` in triage, `j/k/return` in board detail) and added AppKit first-responder guards so shortcuts ignore events when a text field/editor is focused."
-    },
-    {
-      "id": "US-013",
-      "title": "create_synthesis tool returns directly reusable synthesis link",
-      "description": "As a user, when Dialectics creates a synthesis, I should get a direct wiki-link to the new artifact so I can immediately open or reference it.",
-      "acceptanceCriteria": [
-        "create_synthesis response includes a wiki-link for the newly created synthesis item title (not only plain quoted text)",
-        "Response still includes source links and missing-title diagnostics",
-        "Assistant follow-up can navigate to created synthesis via existing wiki-link handling",
-        "tuist test passes"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "Updated `create_synthesis` response formatting to emit the created artifact as `[[Title]]` while preserving the item ID, source wiki-links, and missing-title diagnostics in `KnowledgeBaseTools.createSynthesis`; verified with passing `tuist test`."
-    },
-    {
-      "id": "US-014",
-      "title": "Board suggestion timeout and spec source-of-truth are aligned",
-      "description": "As a user, inline board suggestions should dismiss on a predictable cadence that matches product spec and feels unobtrusive.",
-      "acceptanceCriteria": [
-        "Board suggestion auto-dismiss uses a single shared constant",
-        "Dismiss timeout is set to 5 seconds across both capture bar variants",
-        "Updated timing is documented in DESIGN.md behavior contract",
-        "tuist test passes"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "Added shared timeout constant `AppConstants.Capture.boardSuggestionAutoDismissSeconds = 5` and routed both CaptureBarView auto-dismiss paths through it, aligning implementation with the existing DESIGN.md 5-second contract; verified with passing `tuist test` and `tuist build`."
+      "passes": false,
+      "notes": "Final pass. Check every component against design-reference.html. Verify with Playwright if available."
     }
   ]
 }

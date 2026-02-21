@@ -297,30 +297,160 @@ body {
 .chart-section {
   background: var(--bg);
   border: 1px solid var(--border);
-  padding: 20px;
   margin-bottom: 24px;
 }
 
-.chart-header {
+/* Chart header bar */
+.chart-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
   gap: 12px;
+  flex-wrap: wrap;
 }
 
-.chart-header .chart-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  font-family: var(--font-mono);
-}
-
-.chart-controls {
+.chart-top-left {
   display: flex;
-  gap: 10px;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ct-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.ct-highlight {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.chart-select .ant-select-selector {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+}
+
+/* Connected time button strip */
+.time-btns {
+  display: flex;
+}
+
+.t-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: -1px;
+  transition: all 0.1s;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+.t-btn:first-child { margin-left: 0; }
+.t-btn:hover { background: var(--bg-subtle); color: var(--text); }
+.t-btn.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+  z-index: 1;
+}
+
+/* Chart body */
+.chart-body {
+  padding: 24px;
+  min-height: 300px;
+}
+
+.chart-placeholder {
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Chart footer / legend */
+.chart-footer {
+  display: flex;
+  gap: 28px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.cf-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-line {
+  width: 20px;
+  height: 3px;
+  flex-shrink: 0;
+}
+
+.cf-name {
+  font-weight: 500;
+}
+
+.cf-val {
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* Chart tooltip */
+.chart-tooltip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.chart-tooltip-time {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.chart-tooltip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chart-tooltip-name {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.chart-tooltip-val {
+  color: var(--text);
+  font-weight: 700;
 }
 
 /* Recharts overrides */
