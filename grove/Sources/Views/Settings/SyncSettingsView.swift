@@ -2,21 +2,46 @@ import SwiftUI
 
 /// Settings view for CloudKit sync configuration.
 struct SyncSettingsView: View {
+    @Environment(EntitlementService.self) private var entitlement
     @State private var syncEnabled = SyncSettings.syncEnabled
     @State private var showRestartAlert = false
+    @State private var showPaywall = false
 
     var body: some View {
         Form {
             Section("iCloud Sync") {
                 Toggle("Enable CloudKit Sync", isOn: $syncEnabled)
                     .onChange(of: syncEnabled) { _, newValue in
+                        guard newValue else {
+                            SyncSettings.syncEnabled = false
+                            showRestartAlert = true
+                            return
+                        }
+
+                        guard entitlement.hasAccess(to: .sync) else {
+                            syncEnabled = false
+                            showPaywall = true
+                            return
+                        }
+
                         SyncSettings.syncEnabled = newValue
                         showRestartAlert = true
                     }
 
-                Text("When enabled, all your items, boards, tags, connections, annotations, and nudges sync across devices via iCloud.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
+                if entitlement.hasAccess(to: .sync) {
+                    Text("When enabled, all your items, boards, tags, connections, annotations, and nudges sync across devices via iCloud.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                } else {
+                    Text("Cross-device sync is available with Pro.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+
+                    Button("Unlock Pro") {
+                        showPaywall = true
+                    }
+                    .buttonStyle(.bordered)
+                }
 
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
@@ -33,7 +58,7 @@ struct SyncSettingsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: syncEnabled ? "icloud" : "icloud.slash")
                         .foregroundStyle(syncEnabled ? Color.textPrimary : Color.textSecondary)
-                    Text(syncEnabled ? "Sync enabled — data syncs automatically" : "Local-only mode")
+                    Text(syncEnabled ? "Sync enabled — data syncs automatically" : entitlement.hasAccess(to: .sync) ? "Local-only mode" : "Local-only mode (Sync requires Pro)")
                         .font(.groveBodySecondary)
                 }
             }
@@ -54,6 +79,21 @@ struct SyncSettingsView: View {
             Button("OK") { }
         } message: {
             Text("Please restart Grove for the sync setting to take effect.")
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(focusedFeature: .sync)
+        }
+        .onAppear {
+            if !entitlement.hasAccess(to: .sync), syncEnabled {
+                syncEnabled = false
+                SyncSettings.syncEnabled = false
+            }
+        }
+        .onChange(of: entitlement.state.updatedAt) {
+            if !entitlement.hasAccess(to: .sync), syncEnabled {
+                syncEnabled = false
+                SyncSettings.syncEnabled = false
+            }
         }
     }
 

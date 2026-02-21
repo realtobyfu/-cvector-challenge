@@ -26,7 +26,7 @@ struct HomeView: View {
     @Query(sort: \Item.updatedAt, order: .reverse) private var allItems: [Item]
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var allConversations: [Conversation]
 
-    @State private var starterService = ConversationStarterService()
+    @State private var starterService = ConversationStarterService.shared
     @State private var isInboxCollapsed = false
     @State private var isDiscussionCollapsed = false
     @State private var isItemsCollapsed = false

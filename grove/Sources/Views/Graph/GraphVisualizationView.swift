@@ -6,6 +6,7 @@ import SpriteKit
 
 struct GraphVisualizationView: View {
     @Binding var selectedItem: Item?
+    @Binding var openedItem: Item?
     @Environment(\.modelContext) private var modelContext
     @Query private var allItems: [Item]
     @Query private var allConnections: [Connection]
@@ -241,8 +242,11 @@ struct GraphVisualizationView: View {
         newScene.scaleMode = .resizeFill
         newScene.backgroundColor = .clear
         newScene.configure(items: filteredItems, connections: filteredConnections, boards: allBoards)
-        newScene.onNodeSelected = { item in
+        newScene.onNodeSelected = { item, shouldOpen in
             selectedItem = item
+            if shouldOpen {
+                openedItem = item
+            }
         }
         scene = newScene
     }
@@ -340,7 +344,7 @@ struct GraphSceneView: NSViewRepresentable {
 // MARK: - Graph Scene (SpriteKit)
 
 class GraphScene: SKScene {
-    var onNodeSelected: ((Item) -> Void)?
+    var onNodeSelected: ((Item, Bool) -> Void)?
 
     private var graphNodes: [UUID: GraphNodeSprite] = [:]
     private var edgeNodes: [SKShapeNode] = []
@@ -564,7 +568,7 @@ class GraphScene: SKScene {
                 draggedNode = node
                 node.setHighlighted(true)
                 if let item = node.item {
-                    onNodeSelected?(item)
+                    onNodeSelected?(item, event.clickCount >= 2)
                 }
                 return
             }

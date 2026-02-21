@@ -9,14 +9,23 @@ struct PromptBubble: Identifiable {
     let label: String
     /// Set for ORGANIZE-type bubbles — the tag that defines the unboarded cluster.
     let clusterTag: String?
-    /// Set for ORGANIZE-type bubbles — the IDs of the unboarded items in the cluster.
+    /// Seed items for this prompt (used to scope conversation context).
     let clusterItemIDs: [UUID]
+    /// Boards associated with the prompt's source items.
+    let boardIDs: [UUID]
 
-    init(prompt: String, label: String, clusterTag: String? = nil, clusterItemIDs: [UUID] = []) {
+    init(
+        prompt: String,
+        label: String,
+        clusterTag: String? = nil,
+        clusterItemIDs: [UUID] = [],
+        boardIDs: [UUID] = []
+    ) {
         self.prompt = prompt
         self.label = label
         self.clusterTag = clusterTag
         self.clusterItemIDs = clusterItemIDs
+        self.boardIDs = boardIDs
     }
 }
 

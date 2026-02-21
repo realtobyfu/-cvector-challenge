@@ -5,6 +5,7 @@ import SwiftData
 /// Accessible from the app's Settings window.
 struct NudgeSettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(EntitlementService.self) private var entitlement
     @State private var resurfaceEnabled = NudgeSettings.resurfaceEnabled
     @State private var staleInboxEnabled = NudgeSettings.staleInboxEnabled
     @State private var scheduleIntervalHours = NudgeSettings.scheduleIntervalHours
@@ -13,6 +14,7 @@ struct NudgeSettingsView: View {
     @State private var globalResurfacingPause = NudgeSettings.spacedResurfacingGlobalPause
     @State private var queueStats: ResurfacingService.QueueStats?
     @State private var showAdvancedDetails = false
+    @State private var showPaywall = false
 
     private static let intervalOptions: [(label: String, value: Int)] = [
         ("Every 2 Hours", 2),
@@ -41,23 +43,34 @@ struct NudgeSettingsView: View {
             }
 
             Section("Cadence") {
-                Picker("Check Frequency", selection: $scheduleIntervalHours) {
-                    ForEach(Self.intervalOptions, id: \.value) { option in
-                        Text(option.label).tag(option.value)
+                if entitlement.hasAccess(to: .automations) {
+                    Picker("Check Frequency", selection: $scheduleIntervalHours) {
+                        ForEach(Self.intervalOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
-                }
-                .onChange(of: scheduleIntervalHours) { _, newValue in
-                    NudgeSettings.scheduleIntervalHours = newValue
-                }
-
-                Stepper("Max per day: \(maxNudgesPerDay)", value: $maxNudgesPerDay, in: 1...10)
-                    .onChange(of: maxNudgesPerDay) { _, newValue in
-                        NudgeSettings.maxNudgesPerDay = newValue
+                    .onChange(of: scheduleIntervalHours) { _, newValue in
+                        NudgeSettings.scheduleIntervalHours = newValue
                     }
 
-                Text("High engagement may temporarily exceed this cap.")
-                    .font(.groveBodySmall)
-                    .foregroundStyle(Color.textSecondary)
+                    Stepper("Max per day: \(maxNudgesPerDay)", value: $maxNudgesPerDay, in: 1...10)
+                        .onChange(of: maxNudgesPerDay) { _, newValue in
+                            NudgeSettings.maxNudgesPerDay = newValue
+                        }
+
+                    Text("High engagement may temporarily exceed this cap.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                } else {
+                    Text("Automation cadence controls are available with Pro.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+
+                    Button("Unlock Pro") {
+                        showPaywall = true
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
 
             Section("Weekly Digest") {
@@ -71,48 +84,58 @@ struct NudgeSettingsView: View {
             }
 
             Section("Advanced") {
-                DisclosureGroup("Resurfacing queue and analytics", isExpanded: $showAdvancedDetails) {
-                    Toggle("Enable spaced resurfacing", isOn: $spacedResurfacingEnabled)
-                        .onChange(of: spacedResurfacingEnabled) { _, newValue in
-                            NudgeSettings.spacedResurfacingEnabled = newValue
+                if entitlement.hasAccess(to: .automations) {
+                    DisclosureGroup("Resurfacing queue and analytics", isExpanded: $showAdvancedDetails) {
+                        Toggle("Enable spaced resurfacing", isOn: $spacedResurfacingEnabled)
+                            .onChange(of: spacedResurfacingEnabled) { _, newValue in
+                                NudgeSettings.spacedResurfacingEnabled = newValue
+                            }
+
+                        Toggle("Pause all resurfacing", isOn: $globalResurfacingPause)
+                            .onChange(of: globalResurfacingPause) { _, newValue in
+                                NudgeSettings.spacedResurfacingGlobalPause = newValue
+                            }
+
+                        Text("Items with annotations or connections enter a resurfacing queue.")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+
+                        if let stats = queueStats {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Queue")
+                                    .font(.groveBadge)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.textSecondary)
+
+                                HStack(spacing: Spacing.lg) {
+                                    statBadge(value: stats.totalInQueue, label: "In Queue")
+                                    statBadge(value: stats.upcoming, label: "Upcoming")
+                                    statBadge(value: stats.overdue, label: "Overdue")
+                                    statBadge(value: stats.paused, label: "Paused")
+                                }
+                            }
+                            .padding(.vertical, 4)
                         }
 
-                    Toggle("Pause all resurfacing", isOn: $globalResurfacingPause)
-                        .onChange(of: globalResurfacingPause) { _, newValue in
-                            NudgeSettings.spacedResurfacingGlobalPause = newValue
-                        }
+                        Divider()
+                            .padding(.vertical, 2)
 
-                    Text("Items with annotations or connections enter a resurfacing queue.")
+                        Text("Analytics")
+                            .font(.groveBadge)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Color.textSecondary)
+
+                        analyticsRow(type: .resurface, label: "Resurface")
+                        analyticsRow(type: .staleInbox, label: "Stale Inbox")
+                    }
+                } else {
+                    Text("Advanced automation analytics are available with Pro.")
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textSecondary)
-
-                    if let stats = queueStats {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Queue")
-                                .font(.groveBadge)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Color.textSecondary)
-
-                            HStack(spacing: Spacing.lg) {
-                                statBadge(value: stats.totalInQueue, label: "In Queue")
-                                statBadge(value: stats.upcoming, label: "Upcoming")
-                                statBadge(value: stats.overdue, label: "Overdue")
-                                statBadge(value: stats.paused, label: "Paused")
-                            }
-                        }
-                        .padding(.vertical, 4)
+                    Button("Unlock Pro") {
+                        showPaywall = true
                     }
-
-                    Divider()
-                        .padding(.vertical, 2)
-
-                    Text("Analytics")
-                        .font(.groveBadge)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color.textSecondary)
-
-                    analyticsRow(type: .resurface, label: "Resurface")
-                    analyticsRow(type: .staleInbox, label: "Stale Inbox")
+                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -125,6 +148,9 @@ struct NudgeSettingsView: View {
             if expanded {
                 loadQueueStats()
             }
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(focusedFeature: .automations)
         }
     }
 

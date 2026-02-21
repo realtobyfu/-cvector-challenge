@@ -332,7 +332,7 @@ struct ContentView: View {
                     PlaceholderView(icon: "square.grid.2x2", title: "Board", message: "Board not found.")
                 }
             case .graph:
-                GraphVisualizationView(selectedItem: $selectedItem)
+                GraphVisualizationView(selectedItem: $selectedItem, openedItem: $openedItem)
             case .course(let courseID):
                 if let course = courses.first(where: { $0.id == courseID }) {
                     CourseDetailView(course: course, selectedItem: $selectedItem, openedItem: $openedItem)

@@ -3,6 +3,7 @@ import SwiftData
 
 struct DialecticalChatPanel: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(EntitlementService.self) private var entitlement
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
     @Binding var selectedConversation: Conversation?
     @Binding var isVisible: Bool
@@ -22,6 +23,7 @@ struct DialecticalChatPanel: View {
     @State private var conversationToDelete: Conversation?
     @State private var conversationListQuery = ""
     @State private var conversationListSelectionID: UUID?
+    @State private var showHistoryPaywall = false
     @FocusState private var isConversationListSearchFocused: Bool
 
     private var activeConversation: Conversation? {
@@ -32,14 +34,25 @@ struct DialecticalChatPanel: View {
         conversations.filter { !$0.isArchived }
     }
 
+    private var visibleHistoryConversations: [Conversation] {
+        guard entitlement.hasAccess(to: .fullHistory) else {
+            return Array(activeConversations.prefix(20))
+        }
+        return activeConversations
+    }
+
+    private var isHistoryCapped: Bool {
+        !entitlement.hasAccess(to: .fullHistory) && activeConversations.count > visibleHistoryConversations.count
+    }
+
     private var trimmedConversationListQuery: String {
         conversationListQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var filteredConversations: [Conversation] {
         let query = trimmedConversationListQuery
-        guard !query.isEmpty else { return activeConversations }
-        return activeConversations.filter { conversation in
+        guard !query.isEmpty else { return visibleHistoryConversations }
+        return visibleHistoryConversations.filter { conversation in
             conversationMatchesSearch(conversation, query: query)
         }
     }
@@ -69,6 +82,9 @@ struct DialecticalChatPanel: View {
         }
         .sheet(item: $noteMessage) { message in
             saveNoteSheet(for: message)
+        }
+        .sheet(isPresented: $showHistoryPaywall) {
+            ProPaywallView(focusedFeature: .fullHistory)
         }
         .alert(
             "Delete Conversation Permanently?",
@@ -510,7 +526,7 @@ struct DialecticalChatPanel: View {
 
             Divider()
 
-            if activeConversations.isEmpty {
+            if visibleHistoryConversations.isEmpty {
                 Text("No conversations yet.")
                     .font(.groveBodySmall)
                     .foregroundStyle(Color.textTertiary)
@@ -526,6 +542,27 @@ struct DialecticalChatPanel: View {
                 }
                 .padding(Spacing.md)
             } else {
+                if isHistoryCapped {
+                    HStack(spacing: Spacing.sm) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Showing recent 20 conversations")
+                                .font(.groveBodySmall)
+                                .foregroundStyle(Color.textSecondary)
+                            Text("Upgrade to Pro for full searchable history.")
+                                .font(.groveMeta)
+                                .foregroundStyle(Color.textTertiary)
+                        }
+                        Spacer()
+                        Button("Unlock Pro") {
+                            showHistoryPaywall = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.horizontal, Spacing.md)
+                    .padding(.vertical, Spacing.xs)
+                    Divider()
+                }
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
@@ -619,7 +656,12 @@ struct DialecticalChatPanel: View {
                 .font(.groveBodySmall)
                 .foregroundStyle(Color.textSecondary)
 
-            TextField("Search by title or message...", text: $conversationListQuery)
+            TextField(
+                entitlement.hasAccess(to: .fullHistory)
+                    ? "Search by title or message..."
+                    : "Search recent conversations...",
+                text: $conversationListQuery
+            )
                 .textFieldStyle(.plain)
                 .font(.groveBody)
                 .focused($isConversationListSearchFocused)

@@ -23,6 +23,8 @@ enum BoardSortOption: String, CaseIterable, Sendable {
 }
 
 struct BoardDetailView: View {
+    private static let maxDiscussionSuggestions = 3
+
     let board: Board
     @Binding var selectedItem: Item?
     @Binding var openedItem: Item?
@@ -36,8 +38,7 @@ struct BoardDetailView: View {
     @State private var pickedItems: [Item] = []
     @State private var itemToDelete: Item?
     @State private var isSuggestionsCollapsed = false
-    @State private var boardSuggestions: [Suggestion] = []
-    @Query(sort: \Nudge.createdAt, order: .reverse) private var allNudges: [Nudge]
+    @State private var starterService = ConversationStarterService.shared
 
     /// The effective items for this board — smart boards compute from tag rules, regular boards use direct membership
     private var effectiveItems: [Item] {
@@ -52,10 +53,16 @@ struct BoardDetailView: View {
         sortItems(effectiveItems)
     }
 
-    private var activeNudgesForBoard: [Nudge] {
-        let boardItemIDs = Set(effectiveItems.map(\.id))
-        return allNudges
-            .filter { ($0.status == .pending || $0.status == .shown) && $0.targetItem != nil && boardItemIDs.contains($0.targetItem!.id) }
+    private var boardDiscussionSuggestions: [PromptBubble] {
+        let effectiveItemIDs = Set(effectiveItems.map(\.id))
+        let scoped = starterService.bubbles.filter { bubble in
+            if bubble.boardIDs.contains(board.id) {
+                return true
+            }
+            guard !bubble.clusterItemIDs.isEmpty else { return false }
+            return !effectiveItemIDs.isDisjoint(with: bubble.clusterItemIDs)
+        }
+        return Array(scoped.prefix(Self.maxDiscussionSuggestions))
     }
 
     // MARK: - Body
@@ -69,13 +76,11 @@ struct BoardDetailView: View {
             if effectiveItems.isEmpty {
                 emptyState
             } else {
-                if !boardSuggestions.isEmpty {
+                if !boardDiscussionSuggestions.isEmpty {
                     BoardSuggestionsView(
-                        suggestions: boardSuggestions,
+                        suggestions: boardDiscussionSuggestions,
                         isSuggestionsCollapsed: $isSuggestionsCollapsed,
-                        openedItem: $openedItem,
-                        selectedItem: $selectedItem,
-                        onRefresh: refreshBoardSuggestions
+                        onSelectSuggestion: startConversation(for:)
                     )
                 }
 
@@ -145,12 +150,7 @@ struct BoardDetailView: View {
             return .handled
         }
         .task {
-            if boardSuggestions.isEmpty {
-                refreshBoardSuggestions()
-            }
-        }
-        .onChange(of: effectiveItems.count) {
-            refreshBoardSuggestions()
+            await starterService.refresh(items: allItems)
         }
         .onChange(of: board.id, initial: true) {
             sortOption = board.isSmart ? .dateAdded : .manual
@@ -183,39 +183,15 @@ struct BoardDetailView: View {
 
     // MARK: - Suggestions
 
-    private func computeBoardSuggestions() -> [Suggestion] {
-        var result: [Suggestion] = []
-        let items = effectiveItems
-
-        if let nudge = activeNudgesForBoard.first {
-            result.append(Suggestion(
-                type: .nudge,
-                title: nudge.displayMessage,
-                reason: nudge.type.actionLabel,
-                item: nudge.targetItem,
-                nudge: nudge
-            ))
-        }
-
-        let reflectCandidates = items
-            .filter { $0.status == .active && $0.content != nil && !$0.content!.isEmpty && $0.reflections.isEmpty }
-            .sorted { $0.depthScore > $1.depthScore }
-        if let top = reflectCandidates.first {
-            result.append(Suggestion(type: .reflect, title: top.title, reason: "Has content but no reflections yet", item: top))
-        }
-
-        let revisitCandidates = items
-            .filter { $0.isResurfacingOverdue }
-            .sorted { $0.depthScore > $1.depthScore }
-        if let top = revisitCandidates.first {
-            result.append(Suggestion(type: .revisit, title: top.title, reason: "Due for spaced review", item: top))
-        }
-
-        return Array(result.prefix(3))
-    }
-
-    private func refreshBoardSuggestions() {
-        boardSuggestions = computeBoardSuggestions()
+    private func startConversation(for bubble: PromptBubble) {
+        let boardItemIDs = Set(effectiveItems.map(\.id))
+        let scopedSeedIDs = bubble.clusterItemIDs.filter { boardItemIDs.contains($0) }
+        NotificationCenter.default.postConversationPrompt(
+            ConversationPromptPayload(
+                prompt: bubble.prompt,
+                seedItemIDs: scopedSeedIDs.isEmpty ? bubble.clusterItemIDs : scopedSeedIDs
+            )
+        )
     }
 
     // MARK: - Keyboard Handlers

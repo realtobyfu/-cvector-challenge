@@ -8,6 +8,7 @@ import Observation
     var bubbles: [PromptBubble] { get }
     var isLoading: Bool { get }
     func refresh(items: [Item]) async
+    func bubbles(for boardID: UUID, maxResults: Int) -> [PromptBubble]
 }
 
 // MARK: - ConversationStarterService
@@ -16,6 +17,7 @@ import Observation
 /// Uses a single LLM call with heuristic fallback when LLM is unavailable.
 /// Results are persisted to UserDefaults (TTL: 8 hours) so they appear instantly on relaunch.
 @MainActor @Observable final class ConversationStarterService: ConversationStarterServiceProtocol {
+    static let shared = ConversationStarterService()
 
     private(set) var bubbles: [PromptBubble] = []
     private(set) var isLoading: Bool = false
@@ -34,6 +36,7 @@ import Observation
         let label: String
         let clusterTag: String?
         let clusterItemIDs: [UUID]
+        let boardIDs: [UUID]?
     }
 
     private static let maxBubbleCount = 3
@@ -54,6 +57,8 @@ import Observation
     func refresh(items: [Item]) async {
         guard !hasLoaded else { return }
         hasLoaded = true
+        isLoading = true
+        defer { isLoading = false }
 
         let context = buildContext(from: items)
 
@@ -68,6 +73,15 @@ import Observation
                 Self.saveCachedBubbles(heuristics)
             }
         }
+    }
+
+    func bubbles(for boardID: UUID, maxResults: Int) -> [PromptBubble] {
+        guard maxResults > 0 else { return [] }
+        return Array(
+            bubbles
+                .filter { $0.boardIDs.contains(boardID) }
+                .prefix(maxResults)
+        )
     }
 
     // MARK: - Context Building
@@ -85,6 +99,14 @@ import Observation
         let sharedTag: String
         let items: [Item]
         let count: Int
+    }
+
+    private struct LLMContextCandidate {
+        let id: String
+        let summary: String
+        let clusterTag: String?
+        let itemIDs: [UUID]
+        let boardIDs: [UUID]
     }
 
     private func buildContext(from allItems: [Item]) -> StarterContext {
@@ -153,51 +175,29 @@ import Observation
     // MARK: - LLM Generation
 
     private func generateViaLLM(context: StarterContext) async -> [PromptBubble]? {
-        guard !context.recentItems.isEmpty || !context.staleItems.isEmpty || !context.contradictionItems.isEmpty else {
+        let candidates = llmContextCandidates(from: context)
+        guard !candidates.isEmpty else {
             return nil
         }
 
         let systemPrompt = """
         You are a philosophical thinking partner that helps users reflect on their knowledge base.
-        Given context about a user's recent notes, stale items, and contradictions, generate up to 3 engaging conversation starters.
+        Given context snippets, generate up to 3 engaging conversation starters.
 
         Rules:
         - Each starter is a single, thought-provoking question or prompt (1-2 sentences)
         - Tone: curious, intellectually engaged, not generic
-        - Each starter has a short label: REVISIT, EXPLORE, RESOLVE, REFLECT, or SYNTHESIZE
-        - Prioritize specificity — reference actual titles/topics from the context when possible
+        - Each starter has a short label: REVISIT, EXPLORE, RESOLVE, REFLECT, SYNTHESIZE, or ORGANIZE
+        - If a starter is tied to one of the snippets below, include its exact `context_id`
+        - If a starter is general and not tied to a specific snippet, use `context_id` = "general"
         - Return ONLY valid JSON. No markdown fences, no explanation.
 
         Output format:
-        [{"prompt": "...", "label": "REVISIT"}, {"prompt": "...", "label": "EXPLORE"}]
+        [{"prompt": "...", "label": "REVISIT", "context_id": "stale_0"}]
         """
 
-        var userLines: [String] = []
-
-        if !context.staleItems.isEmpty {
-            let titles = context.staleItems.prefix(3).map { "\"\($0.title)\"" }.joined(separator: ", ")
-            userLines.append("Stale items not touched in 30+ days: \(titles)")
-        }
-
-        if !context.recentItems.isEmpty {
-            let titles = context.recentItems.prefix(5).map { "\"\($0.title)\"" }.joined(separator: ", ")
-            userLines.append("Recently saved items (last 7 days): \(titles)")
-            if let tag = context.topRecentTag, context.topRecentTagCount >= 2 {
-                userLines.append("Most frequent recent tag: \"\(tag)\" (\(context.topRecentTagCount) items)")
-            }
-        }
-
-        if !context.contradictionItems.isEmpty {
-            let titles = context.contradictionItems.prefix(2).map { "\"\($0.title)\"" }.joined(separator: " vs ")
-            userLines.append("Items with contradictions: \(titles)")
-        }
-
-        if let cluster = context.unboardedCluster, !didShowClusterBubble {
-            let titles = cluster.items.prefix(4).map { "\"\($0.title)\"" }.joined(separator: ", ")
-            userLines.append("Unboarded items sharing tag \"\(cluster.sharedTag)\" (\(cluster.count) items): \(titles). If you generate a bubble for this, use label \"ORGANIZE\".")
-            didShowClusterBubble = true
-        }
-
+        var userLines: [String] = ["Context snippets (with stable IDs):"]
+        userLines.append(contentsOf: candidates.map { "- \($0.id): \($0.summary)" })
         let userMessage = userLines.joined(separator: "\n")
 
         guard let result = await provider.complete(
@@ -208,12 +208,28 @@ import Observation
             return nil
         }
 
-        return parseLLMResponse(result.content)
+        let parsed = parseLLMResponse(result.content, candidates: candidates)
+        if parsed?.contains(where: { $0.clusterTag != nil }) == true {
+            didShowClusterBubble = true
+        }
+        return parsed
     }
 
     // MARK: - Response Parsing
 
-    private func parseLLMResponse(_ raw: String) -> [PromptBubble]? {
+    private struct LLMBubblePayload: Decodable {
+        let prompt: String
+        let label: String
+        let contextID: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case prompt
+            case label
+            case contextID = "context_id"
+        }
+    }
+
+    private func parseLLMResponse(_ raw: String, candidates: [LLMContextCandidate]) -> [PromptBubble]? {
         // Strip markdown fences if present
         var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.hasPrefix("```") {
@@ -222,14 +238,25 @@ import Observation
         }
 
         guard let data = cleaned.data(using: .utf8),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] else {
+              let decoded = try? JSONDecoder().decode([LLMBubblePayload].self, from: data) else {
             return nil
         }
 
-        let parsed = array.compactMap { dict -> PromptBubble? in
-            guard let prompt = dict["prompt"], !prompt.isEmpty,
-                  let label = dict["label"], !label.isEmpty else { return nil }
-            return PromptBubble(prompt: prompt, label: label)
+        let candidateLookup = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        let parsed = decoded.compactMap { payload -> PromptBubble? in
+            let prompt = payload.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = payload.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prompt.isEmpty, !label.isEmpty else { return nil }
+
+            let candidate = payload.contextID.flatMap { candidateLookup[$0] }
+            return PromptBubble(
+                prompt: prompt,
+                label: label,
+                clusterTag: candidate?.clusterTag,
+                clusterItemIDs: candidate?.itemIDs ?? [],
+                boardIDs: candidate?.boardIDs ?? []
+            )
         }
 
         return parsed.isEmpty ? nil : Array(parsed.prefix(Self.maxBubbleCount))
@@ -244,23 +271,34 @@ import Observation
         if let stale = context.staleItems.first {
             bubbles.append(PromptBubble(
                 prompt: "You haven't revisited \"\(stale.title)\" in over a month. What do you remember, and has your view changed?",
-                label: "REVISIT"
+                label: "REVISIT",
+                clusterItemIDs: [stale.id],
+                boardIDs: boardIDs(for: [stale])
             ))
         }
 
         // Recent tag cluster
         if let tag = context.topRecentTag, context.topRecentTagCount >= 2 {
+            let relatedRecentItems = context.recentItems
+                .filter { item in item.tags.contains(where: { $0.name == tag }) }
+                .prefix(6)
+            let relatedRecentArray = Array(relatedRecentItems)
             bubbles.append(PromptBubble(
                 prompt: "You've saved \(context.topRecentTagCount) things about \"\(tag)\" recently. What's the central tension or open question?",
-                label: "EXPLORE"
+                label: "EXPLORE",
+                clusterItemIDs: relatedRecentArray.map(\.id),
+                boardIDs: boardIDs(for: relatedRecentArray)
             ))
         }
 
         // Contradiction
         if !context.contradictionItems.isEmpty {
+            let relatedContradictions = Array(context.contradictionItems.prefix(2))
             bubbles.append(PromptBubble(
                 prompt: "You have items that contradict each other. Want to work through the tension and find a synthesis?",
-                label: "RESOLVE"
+                label: "RESOLVE",
+                clusterItemIDs: relatedContradictions.map(\.id),
+                boardIDs: boardIDs(for: relatedContradictions)
             ))
         }
 
@@ -286,11 +324,92 @@ import Observation
         return Array(bubbles.prefix(Self.maxBubbleCount))
     }
 
+    private func llmContextCandidates(from context: StarterContext) -> [LLMContextCandidate] {
+        var candidates: [LLMContextCandidate] = []
+
+        if !context.recentItems.isEmpty {
+            let recentItems = Array(context.recentItems.prefix(6))
+            let titles = recentItems.prefix(4).map { "\"\($0.title)\"" }.joined(separator: ", ")
+            candidates.append(LLMContextCandidate(
+                id: "recent_items",
+                summary: "Recently saved items (last 7 days): \(titles)",
+                clusterTag: nil,
+                itemIDs: recentItems.map(\.id),
+                boardIDs: boardIDs(for: recentItems)
+            ))
+        }
+
+        for (index, item) in context.staleItems.prefix(2).enumerated() {
+            candidates.append(LLMContextCandidate(
+                id: "stale_\(index)",
+                summary: "Stale item not touched in 30+ days: \"\(item.title)\"",
+                clusterTag: nil,
+                itemIDs: [item.id],
+                boardIDs: boardIDs(for: [item])
+            ))
+        }
+
+        if let tag = context.topRecentTag, context.topRecentTagCount >= 2 {
+            let recentTaggedItems = Array(
+                context.recentItems
+                    .filter { item in item.tags.contains(where: { $0.name == tag }) }
+                    .prefix(6)
+            )
+            if !recentTaggedItems.isEmpty {
+                let titles = recentTaggedItems.prefix(4).map { "\"\($0.title)\"" }.joined(separator: ", ")
+                candidates.append(LLMContextCandidate(
+                    id: "recent_tag",
+                    summary: "Recent cluster for tag \"\(tag)\" (\(context.topRecentTagCount) items): \(titles)",
+                    clusterTag: nil,
+                    itemIDs: recentTaggedItems.map(\.id),
+                    boardIDs: boardIDs(for: recentTaggedItems)
+                ))
+            }
+        }
+
+        let contradictionItems = Array(context.contradictionItems.prefix(2))
+        if !contradictionItems.isEmpty {
+            let titles = contradictionItems.map { "\"\($0.title)\"" }.joined(separator: " vs ")
+            candidates.append(LLMContextCandidate(
+                id: "contradiction",
+                summary: "Items with contradictions: \(titles)",
+                clusterTag: nil,
+                itemIDs: contradictionItems.map(\.id),
+                boardIDs: boardIDs(for: contradictionItems)
+            ))
+        }
+
+        if let cluster = context.unboardedCluster, !didShowClusterBubble {
+            let titles = cluster.items.prefix(4).map { "\"\($0.title)\"" }.joined(separator: ", ")
+            candidates.append(LLMContextCandidate(
+                id: "organize_cluster",
+                summary: "Unboarded items sharing tag \"\(cluster.sharedTag)\" (\(cluster.count) items): \(titles)",
+                clusterTag: cluster.sharedTag,
+                itemIDs: cluster.items.map(\.id),
+                boardIDs: []
+            ))
+        }
+
+        return candidates
+    }
+
+    private func boardIDs(for items: [Item]) -> [UUID] {
+        let ids = items.flatMap { $0.boards.map(\.id) }
+        let unique = Set(ids)
+        return unique.sorted { $0.uuidString < $1.uuidString }
+    }
+
     // MARK: - Cache Helpers
 
     private static func saveCachedBubbles(_ bubbles: [PromptBubble]) {
         let encoded = bubbles.map {
-            CachedBubble(prompt: $0.prompt, label: $0.label, clusterTag: $0.clusterTag, clusterItemIDs: $0.clusterItemIDs)
+            CachedBubble(
+                prompt: $0.prompt,
+                label: $0.label,
+                clusterTag: $0.clusterTag,
+                clusterItemIDs: $0.clusterItemIDs,
+                boardIDs: $0.boardIDs
+            )
         }
         guard let data = try? JSONEncoder().encode(encoded) else { return }
         let entry: [String: Any] = ["data": data, "timestamp": Date().timeIntervalSince1970]
@@ -308,7 +427,15 @@ import Observation
         guard let cached = try? JSONDecoder().decode([CachedBubble].self, from: data) else { return nil }
         return Array(
             cached
-                .map { PromptBubble(prompt: $0.prompt, label: $0.label, clusterTag: $0.clusterTag, clusterItemIDs: $0.clusterItemIDs) }
+                .map {
+                    PromptBubble(
+                        prompt: $0.prompt,
+                        label: $0.label,
+                        clusterTag: $0.clusterTag,
+                        clusterItemIDs: $0.clusterItemIDs,
+                        boardIDs: $0.boardIDs ?? []
+                    )
+                }
                 .prefix(Self.maxBubbleCount)
         )
     }

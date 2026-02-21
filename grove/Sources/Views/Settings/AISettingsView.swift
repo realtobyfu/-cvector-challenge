@@ -3,13 +3,17 @@ import SwiftUI
 /// Settings view for configuring LLM (AI) features.
 /// Keeps core setup visible and tucks diagnostics behind advanced disclosure groups.
 struct AISettingsView: View {
+    @Environment(EntitlementService.self) private var entitlement
     @State private var isEnabled = LLMServiceConfig.isEnabled
     @State private var providerType = LLMServiceConfig.providerType
     @State private var apiKey = LLMServiceConfig.apiKey
     @State private var model = LLMServiceConfig.model
     @State private var baseURL = LLMServiceConfig.baseURL
+    @State private var smartRoutingEnabled = LLMServiceConfig.smartRoutingEnabled
     @State private var showAdvancedProvider = false
     @State private var showAdvancedUsage = false
+    @State private var showPaywall = false
+    @State private var paywallFeature: ProFeature?
     @State private var refreshID = UUID()
     @State private var budgetEnabled: Bool = TokenTracker.shared.budgetEnabled
     @State private var budgetText: String = {
@@ -19,6 +23,7 @@ struct AISettingsView: View {
 
     private var tracker: TokenTracker { TokenTracker.shared }
     private var effectiveProviderType: LLMProviderType { LLMServiceConfig.effectiveProviderType }
+    private var isBYOEnabled: Bool { BuildFlags.isBYOEnabled }
 
     var body: some View {
         Form {
@@ -55,44 +60,92 @@ struct AISettingsView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "cloud")
                             .foregroundStyle(Color.textSecondary)
-                        Text("Using Groq cloud API. Apple Intelligence requires macOS 26 or later.")
+                        Text("Cloud AI is available. Apple Intelligence requires macOS 26 or later.")
                             .font(.groveBodySmall)
                             .foregroundStyle(Color.textSecondary)
                     }
                 }
 
                 if providerType == .groq || !LLMServiceConfig.isAppleIntelligenceSupported {
-                    SecureField("Groq API Key", text: $apiKey)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: apiKey) { _, newValue in
-                            LLMServiceConfig.apiKey = newValue
+                    if isBYOEnabled {
+                        SecureField("Cloud API Key", text: $apiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: apiKey) { _, newValue in
+                                LLMServiceConfig.apiKey = newValue
+                            }
+
+                        if apiKey.isEmpty {
+                            Text("Add an API key to enable cloud AI in debug builds.")
+                                .font(.groveBadge)
+                                .foregroundStyle(Color.textTertiary)
                         }
 
-                    if apiKey.isEmpty {
-                        Text("Add an API key to enable cloud AI.")
+                        DisclosureGroup("Debug cloud overrides", isExpanded: $showAdvancedProvider) {
+                            TextField("Cloud model override", text: $model)
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: model) { _, newValue in
+                                    LLMServiceConfig.model = newValue
+                                }
+                            Text("Optional debug-only override.")
+                                .font(.groveBadge)
+                                .foregroundStyle(Color.textTertiary)
+
+                            TextField("Cloud base URL override", text: $baseURL)
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: baseURL) { _, newValue in
+                                    LLMServiceConfig.baseURL = newValue
+                                }
+                            Text("Optional debug-only override.")
+                                .font(.groveBadge)
+                                .foregroundStyle(Color.textTertiary)
+                        }
+                    } else {
+                        Text("Cloud AI is managed in this build.")
                             .font(.groveBadge)
                             .foregroundStyle(Color.textTertiary)
+
+                        if !LLMServiceConfig.isConfigured {
+                            Text("Cloud AI is unavailable until managed configuration is provided.")
+                                .font(.groveBadge)
+                                .foregroundStyle(Color.textTertiary)
+                        }
+                    }
+                }
+            }
+
+            Section("Routing") {
+                Toggle("Smart cloud fallback", isOn: $smartRoutingEnabled)
+                    .onChange(of: smartRoutingEnabled) { _, newValue in
+                        guard newValue else {
+                            LLMServiceConfig.smartRoutingEnabled = false
+                            return
+                        }
+                        guard entitlement.hasAccess(to: .smartRouting) else {
+                            smartRoutingEnabled = false
+                            presentPaywall(for: .smartRouting)
+                            return
+                        }
+                        LLMServiceConfig.smartRoutingEnabled = true
                     }
 
-                    DisclosureGroup("Advanced provider options", isExpanded: $showAdvancedProvider) {
-                        TextField("Model", text: $model)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: model) { _, newValue in
-                                LLMServiceConfig.model = newValue
-                            }
-                        Text("Default: moonshotai/kimi-k2-instruct")
-                            .font(.groveBadge)
-                            .foregroundStyle(Color.textTertiary)
-
-                        TextField("Base URL", text: $baseURL)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: baseURL) { _, newValue in
-                                LLMServiceConfig.baseURL = newValue
-                            }
-                        Text("Default: https://api.groq.com/openai/v1/chat/completions")
-                            .font(.groveBadge)
-                            .foregroundStyle(Color.textTertiary)
+                if entitlement.hasAccess(to: .smartRouting) {
+                    Text("Prefer on-device intelligence first, then use cloud as fallback when needed.")
+                        .font(.groveBodySmall)
+                        .foregroundStyle(Color.textSecondary)
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                        Text("Smart cloud fallback is available with Pro.")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
                     }
+
+                    Button("Unlock Pro") {
+                        presentPaywall(for: .smartRouting)
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
 
@@ -163,6 +216,15 @@ struct AISettingsView: View {
         .formStyle(.grouped)
         .frame(minWidth: 400)
         .id(refreshID)
+        .onAppear {
+            smartRoutingEnabled = LLMServiceConfig.smartRoutingEnabled
+        }
+        .onChange(of: entitlement.state.updatedAt) {
+            smartRoutingEnabled = LLMServiceConfig.smartRoutingEnabled
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(focusedFeature: paywallFeature)
+        }
     }
 
     // MARK: - Status
@@ -185,7 +247,10 @@ struct AISettingsView: View {
             return "Ready with \(effectiveProviderType.displayName)."
         }
         if effectiveProviderType == .groq {
-            return "Add a Groq API key to enable AI."
+            if isBYOEnabled {
+                return "Add a cloud API key to enable AI."
+            }
+            return "Cloud AI is managed by this build."
         }
         return "Apple Intelligence is unavailable on this Mac."
     }
@@ -333,5 +398,10 @@ struct AISettingsView: View {
         case "dialectics": return "Dialectics"
         default: return service.capitalized
         }
+    }
+
+    private func presentPaywall(for feature: ProFeature) {
+        paywallFeature = feature
+        showPaywall = true
     }
 }

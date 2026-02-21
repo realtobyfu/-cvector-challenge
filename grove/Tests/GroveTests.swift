@@ -5,6 +5,40 @@ import Testing
 
 struct GroveTests {
     @MainActor
+    @Test func entitlementServiceDefaultsToFreeTier() {
+        let defaults = testDefaults()
+        let service = EntitlementService(defaults: defaults)
+
+        #expect(service.tier == .free)
+        #expect(!service.hasAccess(to: .sync))
+    }
+
+    @MainActor
+    @Test func entitlementServiceTrialExpiresToFree() {
+        let defaults = testDefaults()
+        let service = EntitlementService(defaults: defaults)
+
+        service.startTrial(days: 0)
+        service.refreshTrialState(referenceDate: .now.addingTimeInterval(1))
+
+        #expect(service.tier == .free)
+        #expect(!service.isTrialActive)
+    }
+
+    @MainActor
+    @Test func entitlementServiceProTierUnlocksFeatures() {
+        let defaults = testDefaults()
+        let service = EntitlementService(defaults: defaults)
+
+        service.activatePro()
+
+        #expect(service.tier == .pro)
+        #expect(service.hasAccess(to: .sync))
+        #expect(service.hasAccess(to: .smartRouting))
+        #expect(service.hasAccess(to: .fullHistory))
+    }
+
+    @MainActor
     @Test func conversationStarterServiceCapsLLMResultsAtThree() async {
         UserDefaults.standard.removeObject(forKey: "grove.conversationStarters")
 
@@ -42,6 +76,33 @@ struct GroveTests {
 
         #expect(service.bubbles.count == 1)
         #expect(service.bubbles.first?.label == "REFLECT")
+    }
+
+    @MainActor
+    @Test func conversationStarterServiceFiltersBubblesByBoardID() async {
+        UserDefaults.standard.removeObject(forKey: "grove.conversationStarters")
+
+        let provider = MockLLMProvider()
+        provider.responseContent = """
+        [
+          {"prompt":"P1","label":"EXPLORE","context_id":"recent_items"}
+        ]
+        """
+
+        let service = ConversationStarterService(provider: provider)
+
+        let board = Board(title: "Philosophy")
+        let item = Item(title: "Recent thought", type: .note)
+        item.status = .active
+        item.createdAt = .now
+        item.updatedAt = .now
+        item.boards.append(board)
+
+        await service.refresh(items: [item])
+
+        let scoped = service.bubbles(for: board.id, maxResults: 3)
+        #expect(scoped.count == 1)
+        #expect(scoped.first?.prompt == "P1")
     }
 
     @Test func conversationPromptPayloadParsesSeedItemIDsFromNotification() {
@@ -200,6 +261,13 @@ struct GroveTests {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
+    }
+
+    private func testDefaults() -> UserDefaults {
+        let suiteName = "grove.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 
 }

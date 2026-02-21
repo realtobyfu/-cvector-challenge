@@ -5,6 +5,7 @@ import SwiftData
 struct GroveApp: App {
     let modelContainer: ModelContainer
     @State private var syncService = SyncService()
+    @State private var entitlementService = EntitlementService.shared
 
     init() {
         let schema = Schema([
@@ -61,6 +62,7 @@ struct GroveApp: App {
                     let context = modelContainer.mainContext
                     AnnotationMigrationService.migrateIfNeeded(context: context)
                 }
+                .environment(entitlementService)
         }
         .modelContainer(modelContainer)
         .defaultSize(width: 1200, height: 800)
@@ -70,6 +72,7 @@ struct GroveApp: App {
 
         MenuBarExtra {
             MenuBarView()
+                .environment(entitlementService)
         } label: {
             Label("Grove", systemImage: "leaf")
                 .labelStyle(.iconOnly)
@@ -80,6 +83,7 @@ struct GroveApp: App {
 
         Window("Quick Capture", id: "quick-capture") {
             QuickCapturePanel()
+                .environment(entitlementService)
         }
         .modelContainer(modelContainer)
         .windowStyle(.hiddenTitleBar)
@@ -89,6 +93,11 @@ struct GroveApp: App {
 
         Settings {
             TabView {
+                ProSettingsView()
+                    .tabItem {
+                        Label("Pro", systemImage: "crown")
+                    }
+
                 NudgeSettingsView()
                     .tabItem {
                         Label("Nudges", systemImage: "bell")
@@ -113,6 +122,7 @@ struct GroveApp: App {
                     }
             }
             .frame(width: 500, height: 500)
+            .environment(entitlementService)
         }
     }
 }

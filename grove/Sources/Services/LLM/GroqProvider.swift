@@ -1,7 +1,6 @@
 import Foundation
 
 /// LLM provider that calls the Groq API (OpenAI-compatible format).
-/// Uses moonshotai/kimi-k2-instruct by default.
 /// All calls are async, non-blocking, and failure-tolerant — returns nil on any error.
 actor GroqProvider: LLMProvider {
     private let session: URLSession
@@ -27,11 +26,7 @@ actor GroqProvider: LLMProvider {
         let budgetExceeded = await MainActor.run { TokenTracker.shared.isBudgetExceeded }
         if budgetExceeded { lastError = .budgetExceeded; return nil }
 
-        let config = (
-            apiKey: LLMServiceConfig.apiKey,
-            model: LLMServiceConfig.model,
-            baseURL: LLMServiceConfig.baseURL
-        )
+        let config = LLMServiceConfig.groqRuntimeConfig()
 
         guard !config.apiKey.isEmpty else { lastError = .apiKeyMissing; return nil }
         guard let url = URL(string: config.baseURL) else { lastError = .invalidURL; return nil }
@@ -98,11 +93,7 @@ actor GroqProvider: LLMProvider {
         let budgetExceeded = await MainActor.run { TokenTracker.shared.isBudgetExceeded }
         if budgetExceeded { lastError = .budgetExceeded; return nil }
 
-        let config = (
-            apiKey: LLMServiceConfig.apiKey,
-            model: LLMServiceConfig.model,
-            baseURL: LLMServiceConfig.baseURL
-        )
+        let config = LLMServiceConfig.groqRuntimeConfig()
 
         guard !config.apiKey.isEmpty else { lastError = .apiKeyMissing; return nil }
         guard let url = URL(string: config.baseURL) else { lastError = .invalidURL; return nil }

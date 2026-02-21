@@ -41,7 +41,7 @@ enum LLMError: Sendable {
     var userMessage: String {
         switch self {
         case .apiKeyMissing:
-            return "No API key configured. Add one in Settings > AI."
+            return "Cloud AI is unavailable."
         case .budgetExceeded:
             return "Monthly token budget exceeded."
         case .invalidURL:
