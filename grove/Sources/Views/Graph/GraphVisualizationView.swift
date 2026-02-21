@@ -760,6 +760,7 @@ class GraphNodeSprite: SKNode {
     private func iconChar(for type: ItemType) -> String {
         switch type {
         case .article: return "◇"
+        case .codebase: return "</>"
         case .video: return "▷"
         case .note: return "∎"
         case .courseLecture: return "◈"

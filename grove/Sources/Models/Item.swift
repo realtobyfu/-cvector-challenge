@@ -66,6 +66,7 @@ enum GrowthStage: String, CaseIterable, Sendable {
 
 enum ItemType: String, Codable {
     case article
+    case codebase
     case video
     case note
     case courseLecture
@@ -73,6 +74,7 @@ enum ItemType: String, Codable {
     var iconName: String {
         switch self {
         case .article: "doc.richtext"
+        case .codebase: "terminal"
         case .video: "play.rectangle"
         case .note: "note.text"
         case .courseLecture: "graduationcap"
@@ -183,6 +185,19 @@ final class Item {
     var isQueuedForReadLater: Bool {
         guard status == .queued, let until = readLaterUntil else { return false }
         return until > .now
+    }
+
+    /// Whether this item should be considered by discussion suggestion generation.
+    /// Only article items can opt out; all other types are always included.
+    var isIncludedInDiscussionSuggestions: Bool {
+        get {
+            guard type == .article else { return true }
+            return metadata["excludeFromDiscussionSuggestions"] != "true"
+        }
+        set {
+            guard type == .article else { return }
+            metadata["excludeFromDiscussionSuggestions"] = newValue ? nil : "true"
+        }
     }
 
     /// Next resurfacing date based on lastResurfacedAt + interval, or lastEngagedAt + interval.

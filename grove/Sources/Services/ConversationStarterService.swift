@@ -8,6 +8,7 @@ import Observation
     var bubbles: [PromptBubble] { get }
     var isLoading: Bool { get }
     func refresh(items: [Item]) async
+    func forceRefresh(items: [Item]) async
     func bubbles(for boardID: UUID, maxResults: Int) -> [PromptBubble]
 }
 
@@ -75,6 +76,11 @@ import Observation
         }
     }
 
+    func forceRefresh(items: [Item]) async {
+        hasLoaded = false
+        await refresh(items: items)
+    }
+
     func bubbles(for boardID: UUID, maxResults: Int) -> [PromptBubble] {
         guard maxResults > 0 else { return [] }
         return Array(
@@ -110,21 +116,22 @@ import Observation
     }
 
     private func buildContext(from allItems: [Item]) -> StarterContext {
+        let suggestionEligibleItems = allItems.filter { $0.isIncludedInDiscussionSuggestions }
         let now = Date()
         let sevenDaysAgo = now.addingTimeInterval(-7 * 24 * 3600)
         let thirtyDaysAgo = now.addingTimeInterval(-30 * 24 * 3600)
 
-        let recentItems = allItems.filter {
+        let recentItems = suggestionEligibleItems.filter {
             ($0.status == .active || $0.status == .inbox) && $0.createdAt > sevenDaysAgo
         }
 
-        let staleItems = allItems.filter {
+        let staleItems = suggestionEligibleItems.filter {
             $0.status == .active &&
             $0.updatedAt < thirtyDaysAgo &&
             !$0.reflections.isEmpty
         }
 
-        let contradictionItems = allItems.filter {
+        let contradictionItems = suggestionEligibleItems.filter {
             $0.outgoingConnections.contains { $0.type == .contradicts }
         }
 
@@ -134,7 +141,7 @@ import Observation
         let topEntry = tagCounts.max(by: { $0.value < $1.value })
 
         // Unboarded cluster: items with no board assignment
-        let unboardedCluster = findUnboardedCluster(from: allItems)
+        let unboardedCluster = findUnboardedCluster(from: suggestionEligibleItems)
 
         return StarterContext(
             recentItems: recentItems,

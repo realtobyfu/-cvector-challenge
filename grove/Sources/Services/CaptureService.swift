@@ -37,8 +37,15 @@ final class CaptureService: CaptureServiceProtocol {
            let scheme = url.scheme,
            ["http", "https"].contains(scheme.lowercased()),
            url.host != nil {
-            // URL input — detect article vs video
-            let itemType: ItemType = Self.isVideoURL(trimmed) ? .video : .article
+            // URL input — detect codebase (GitHub) vs video vs article
+            let itemType: ItemType
+            if Self.isGitHubURL(trimmed) {
+                itemType = .codebase
+            } else if Self.isVideoURL(trimmed) {
+                itemType = .video
+            } else {
+                itemType = .article
+            }
             let item = Item(title: trimmed, type: itemType)
             item.status = .inbox
             item.sourceURL = trimmed
@@ -313,5 +320,13 @@ final class CaptureService: CaptureServiceProtocol {
             || lower.contains("youtu.be/")
             || lower.contains("vimeo.com/")
             || lower.contains("twitch.tv/")
+    }
+
+    private static func isGitHubURL(_ urlString: String) -> Bool {
+        guard let url = URL(string: urlString),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+        return host == "github.com" || host == "www.github.com"
     }
 }
