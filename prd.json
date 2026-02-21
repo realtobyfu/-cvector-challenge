@@ -117,7 +117,7 @@
         "npm run build passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "This is the most important visual change. See DESIGN.md anti-patterns — NO boxed chips, NO abbreviated labels. The formatMetricName() utility should map snake_case API names to proper display names."
     },
     {
