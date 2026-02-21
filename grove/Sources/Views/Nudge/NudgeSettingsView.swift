@@ -6,6 +6,7 @@ import SwiftData
 struct NudgeSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(EntitlementService.self) private var entitlement
+    @Environment(PaywallCoordinator.self) private var paywallCoordinator
     @State private var resurfaceEnabled = NudgeSettings.resurfaceEnabled
     @State private var staleInboxEnabled = NudgeSettings.staleInboxEnabled
     @State private var scheduleIntervalHours = NudgeSettings.scheduleIntervalHours
@@ -14,7 +15,7 @@ struct NudgeSettingsView: View {
     @State private var globalResurfacingPause = NudgeSettings.spacedResurfacingGlobalPause
     @State private var queueStats: ResurfacingService.QueueStats?
     @State private var showAdvancedDetails = false
-    @State private var showPaywall = false
+    @State private var paywallPresentation: PaywallPresentation?
 
     private static let intervalOptions: [(label: String, value: Int)] = [
         ("Every 2 Hours", 2),
@@ -62,12 +63,30 @@ struct NudgeSettingsView: View {
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textSecondary)
                 } else {
-                    Text("Automation cadence controls are available with Pro.")
-                        .font(.groveBodySmall)
-                        .foregroundStyle(Color.textSecondary)
+                    Picker("Check Frequency", selection: $scheduleIntervalHours) {
+                        ForEach(Self.intervalOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
+                    }
+                    .disabled(true)
+
+                    Stepper("Max per day: \(maxNudgesPerDay)", value: $maxNudgesPerDay, in: 1...10)
+                        .disabled(true)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                        Text("Automation cadence controls are available with Pro.")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                    }
 
                     Button("Unlock Pro") {
-                        showPaywall = true
+                        paywallPresentation = paywallCoordinator.present(
+                            feature: .automations,
+                            source: .nudgeSettings
+                        )
                     }
                     .buttonStyle(.bordered)
                 }
@@ -129,11 +148,24 @@ struct NudgeSettingsView: View {
                         analyticsRow(type: .staleInbox, label: "Stale Inbox")
                     }
                 } else {
-                    Text("Advanced automation analytics are available with Pro.")
-                        .font(.groveBodySmall)
-                        .foregroundStyle(Color.textSecondary)
+                    Toggle("Enable spaced resurfacing", isOn: $spacedResurfacingEnabled)
+                        .disabled(true)
+                    Toggle("Pause all resurfacing", isOn: $globalResurfacingPause)
+                        .disabled(true)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                        Text("Advanced automation analytics are available with Pro.")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                    }
                     Button("Unlock Pro") {
-                        showPaywall = true
+                        paywallPresentation = paywallCoordinator.present(
+                            feature: .automations,
+                            source: .nudgeSettings
+                        )
                     }
                     .buttonStyle(.bordered)
                 }
@@ -149,8 +181,8 @@ struct NudgeSettingsView: View {
                 loadQueueStats()
             }
         }
-        .sheet(isPresented: $showPaywall) {
-            ProPaywallView(focusedFeature: .automations)
+        .sheet(item: $paywallPresentation) { presentation in
+            ProPaywallView(presentation: presentation)
         }
     }
 

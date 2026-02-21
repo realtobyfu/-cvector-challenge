@@ -11,8 +11,11 @@ enum SidebarItem: Hashable {
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(OnboardingService.self) private var onboarding
     @Query(sort: \Board.sortOrder) private var boards: [Board]
     @Query(sort: \Course.createdAt) private var courses: [Course]
+    @Query private var allItemsForOnboarding: [Item]
+    @Query private var allConversationsForOnboarding: [Conversation]
     @State private var selection: SidebarItem? = .home
     @State private var inspectorUserOverride: Bool?
     @State private var selectedItem: Item?
@@ -57,6 +60,20 @@ struct ContentView: View {
         return nil
     }
 
+    private var onboardingCaptureCompleted: Bool {
+        !allItemsForOnboarding.isEmpty
+    }
+
+    private var onboardingOrganizeCompleted: Bool {
+        allItemsForOnboarding.contains { !$0.boards.isEmpty }
+    }
+
+    private var onboardingChatCompleted: Bool {
+        allConversationsForOnboarding.contains { conversation in
+            conversation.messages.contains { $0.role == .user }
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(selection: $selection, selectedConversation: $selectedConversation)
@@ -97,6 +114,21 @@ struct ContentView: View {
                 }
             }
         }
+        .onAppear {
+            refreshOnboardingState()
+        }
+        .onChange(of: allItemsForOnboarding.count) {
+            refreshOnboardingState()
+        }
+        .onChange(of: boards.count) {
+            refreshOnboardingState()
+        }
+        .onChange(of: onboardingOrganizeCompleted) {
+            refreshOnboardingState()
+        }
+        .onChange(of: onboardingChatCompleted) {
+            refreshOnboardingState()
+        }
     }
 
     // MARK: - Detail Layout
@@ -106,6 +138,7 @@ struct ContentView: View {
             mainContentArea
             searchOverlay
             captureOverlay
+            onboardingOverlay
         }
     }
 
@@ -222,6 +255,14 @@ struct ContentView: View {
                 Spacer()
             }
             .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    @ViewBuilder
+    private var onboardingOverlay: some View {
+        if onboarding.isPresented {
+            OnboardingFlowView()
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
         }
     }
 
@@ -343,6 +384,18 @@ struct ContentView: View {
                 PlaceholderView(icon: "leaf", title: "Grove", message: "Select an item from the sidebar to get started.")
             }
         }
+    }
+
+    private func refreshOnboardingState() {
+        onboarding.updateProgress(
+            captureCompleted: onboardingCaptureCompleted,
+            organizeCompleted: onboardingOrganizeCompleted,
+            chatCompleted: onboardingChatCompleted
+        )
+        onboarding.evaluateAutoPresentation(
+            itemCount: allItemsForOnboarding.count,
+            boardCount: boards.count
+        )
     }
 }
 

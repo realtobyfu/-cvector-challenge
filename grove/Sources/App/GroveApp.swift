@@ -6,6 +6,8 @@ struct GroveApp: App {
     let modelContainer: ModelContainer
     @State private var syncService = SyncService()
     @State private var entitlementService = EntitlementService.shared
+    @State private var onboardingService = OnboardingService.shared
+    @State private var paywallCoordinator = PaywallCoordinator.shared
 
     init() {
         let schema = Schema([
@@ -63,6 +65,8 @@ struct GroveApp: App {
                     AnnotationMigrationService.migrateIfNeeded(context: context)
                 }
                 .environment(entitlementService)
+                .environment(onboardingService)
+                .environment(paywallCoordinator)
         }
         .modelContainer(modelContainer)
         .defaultSize(width: 1200, height: 800)
@@ -73,6 +77,8 @@ struct GroveApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environment(entitlementService)
+                .environment(onboardingService)
+                .environment(paywallCoordinator)
         } label: {
             Label("Grove", systemImage: "leaf")
                 .labelStyle(.iconOnly)
@@ -84,6 +90,8 @@ struct GroveApp: App {
         Window("Quick Capture", id: "quick-capture") {
             QuickCapturePanel()
                 .environment(entitlementService)
+                .environment(onboardingService)
+                .environment(paywallCoordinator)
         }
         .modelContainer(modelContainer)
         .windowStyle(.hiddenTitleBar)
@@ -123,6 +131,8 @@ struct GroveApp: App {
             }
             .frame(width: 500, height: 500)
             .environment(entitlementService)
+            .environment(onboardingService)
+            .environment(paywallCoordinator)
         }
     }
 }

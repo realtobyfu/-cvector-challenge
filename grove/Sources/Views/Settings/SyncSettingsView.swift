@@ -3,24 +3,20 @@ import SwiftUI
 /// Settings view for CloudKit sync configuration.
 struct SyncSettingsView: View {
     @Environment(EntitlementService.self) private var entitlement
+    @Environment(PaywallCoordinator.self) private var paywallCoordinator
     @State private var syncEnabled = SyncSettings.syncEnabled
     @State private var showRestartAlert = false
-    @State private var showPaywall = false
+    @State private var paywallPresentation: PaywallPresentation?
 
     var body: some View {
         Form {
             Section("iCloud Sync") {
                 Toggle("Enable CloudKit Sync", isOn: $syncEnabled)
+                    .disabled(!entitlement.hasAccess(to: .sync))
                     .onChange(of: syncEnabled) { _, newValue in
                         guard newValue else {
                             SyncSettings.syncEnabled = false
                             showRestartAlert = true
-                            return
-                        }
-
-                        guard entitlement.hasAccess(to: .sync) else {
-                            syncEnabled = false
-                            showPaywall = true
                             return
                         }
 
@@ -33,12 +29,25 @@ struct SyncSettingsView: View {
                         .font(.groveBodySmall)
                         .foregroundStyle(Color.textSecondary)
                 } else {
-                    Text("Cross-device sync is available with Pro.")
-                        .font(.groveBodySmall)
-                        .foregroundStyle(Color.textSecondary)
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                        Text("Cross-device sync is available with Pro.")
+                            .font(.groveBodySmall)
+                            .foregroundStyle(Color.textSecondary)
+                    }
 
                     Button("Unlock Pro") {
-                        showPaywall = true
+                        paywallPresentation = paywallCoordinator.present(
+                            feature: .sync,
+                            source: .syncSettings,
+                            pendingAction: {
+                                syncEnabled = true
+                                SyncSettings.syncEnabled = true
+                                showRestartAlert = true
+                            }
+                        )
                     }
                     .buttonStyle(.bordered)
                 }
@@ -80,8 +89,8 @@ struct SyncSettingsView: View {
         } message: {
             Text("Please restart Grove for the sync setting to take effect.")
         }
-        .sheet(isPresented: $showPaywall) {
-            ProPaywallView(focusedFeature: .sync)
+        .sheet(item: $paywallPresentation) { presentation in
+            ProPaywallView(presentation: presentation)
         }
         .onAppear {
             if !entitlement.hasAccess(to: .sync), syncEnabled {
@@ -90,6 +99,7 @@ struct SyncSettingsView: View {
             }
         }
         .onChange(of: entitlement.state.updatedAt) {
+            syncEnabled = SyncSettings.syncEnabled
             if !entitlement.hasAccess(to: .sync), syncEnabled {
                 syncEnabled = false
                 SyncSettings.syncEnabled = false

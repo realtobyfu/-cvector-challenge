@@ -25,6 +25,18 @@ enum BoardSortOption: String, CaseIterable, Sendable {
 struct BoardDetailView: View {
     private static let maxDiscussionSuggestions = 3
 
+    private struct PromptModeSelection {
+        let prompt: String
+        let label: String
+        let scopedSeedItemIDs: [UUID]
+
+        init(bubble: PromptBubble, scopedSeedItemIDs: [UUID]) {
+            self.prompt = bubble.prompt
+            self.label = bubble.label
+            self.scopedSeedItemIDs = scopedSeedItemIDs
+        }
+    }
+
     let board: Board
     @Binding var selectedItem: Item?
     @Binding var openedItem: Item?
@@ -39,6 +51,7 @@ struct BoardDetailView: View {
     @State private var itemToDelete: Item?
     @State private var isSuggestionsCollapsed = false
     @State private var starterService = ConversationStarterService.shared
+    @State private var promptModeSelection: PromptModeSelection?
 
     /// The effective items for this board — smart boards compute from tag rules, regular boards use direct membership
     private var effectiveItems: [Item] {
@@ -68,43 +81,56 @@ struct BoardDetailView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !board.isSmart {
-                CaptureBarView(currentBoardID: board.id)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                if !board.isSmart {
+                    CaptureBarView(currentBoardID: board.id)
+                }
+
+                if effectiveItems.isEmpty {
+                    emptyState
+                } else {
+                    if !boardDiscussionSuggestions.isEmpty {
+                        BoardSuggestionsView(
+                            suggestions: boardDiscussionSuggestions,
+                            isSuggestionsCollapsed: $isSuggestionsCollapsed,
+                            onSelectSuggestion: presentPromptActions(for:)
+                        )
+                    }
+
+                    switch viewMode {
+                    case .grid:
+                        BoardGridView(
+                            items: sortedFilteredItems,
+                            canReorder: sortOption == .manual && !board.isSmart,
+                            selectedItem: $selectedItem,
+                            openedItem: $openedItem,
+                            draggingItemID: $draggingItemID,
+                            itemContextMenu: { item in AnyView(itemContextMenu(for: item)) },
+                            onReorder: moveGridItem
+                        )
+                    case .list:
+                        BoardListView(
+                            items: sortedFilteredItems,
+                            canReorder: sortOption == .manual && !board.isSmart,
+                            selectedItem: $selectedItem,
+                            openedItem: $openedItem,
+                            itemContextMenu: { item in AnyView(itemContextMenu(for: item)) },
+                            onMove: moveListItems
+                        )
+                    }
+                }
             }
 
-            if effectiveItems.isEmpty {
-                emptyState
-            } else {
-                if !boardDiscussionSuggestions.isEmpty {
-                    BoardSuggestionsView(
-                        suggestions: boardDiscussionSuggestions,
-                        isSuggestionsCollapsed: $isSuggestionsCollapsed,
-                        onSelectSuggestion: startConversation(for:)
-                    )
-                }
+            if let selection = promptModeSelection {
+                Rectangle()
+                    .fill(Color.borderPrimary)
+                    .frame(width: 1)
 
-                switch viewMode {
-                case .grid:
-                    BoardGridView(
-                        items: sortedFilteredItems,
-                        canReorder: sortOption == .manual && !board.isSmart,
-                        selectedItem: $selectedItem,
-                        openedItem: $openedItem,
-                        draggingItemID: $draggingItemID,
-                        itemContextMenu: { item in AnyView(itemContextMenu(for: item)) },
-                        onReorder: moveGridItem
-                    )
-                case .list:
-                    BoardListView(
-                        items: sortedFilteredItems,
-                        canReorder: sortOption == .manual && !board.isSmart,
-                        selectedItem: $selectedItem,
-                        openedItem: $openedItem,
-                        itemContextMenu: { item in AnyView(itemContextMenu(for: item)) },
-                        onMove: moveListItems
-                    )
-                }
+                promptModePanel(for: selection)
+                    .frame(width: 330)
+                    .frame(maxHeight: .infinity)
+                    .transition(.move(edge: .trailing))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -154,7 +180,9 @@ struct BoardDetailView: View {
         }
         .onChange(of: board.id, initial: true) {
             sortOption = board.isSmart ? .dateAdded : .manual
+            promptModeSelection = nil
         }
+        .animation(.easeInOut(duration: 0.2), value: promptModeSelection != nil)
         .alert(
             "Delete Item",
             isPresented: Binding(
@@ -183,15 +211,144 @@ struct BoardDetailView: View {
 
     // MARK: - Suggestions
 
-    private func startConversation(for bubble: PromptBubble) {
-        let boardItemIDs = Set(effectiveItems.map(\.id))
-        let scopedSeedIDs = bubble.clusterItemIDs.filter { boardItemIDs.contains($0) }
+    private func presentPromptActions(for bubble: PromptBubble) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            promptModeSelection = PromptModeSelection(
+                bubble: bubble,
+                scopedSeedItemIDs: scopedSeedItemIDs(for: bubble)
+            )
+        }
+    }
+
+    private func promptModePanel(for selection: PromptModeSelection) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            HStack(spacing: Spacing.sm) {
+                Text("PROMPT ACTIONS")
+                    .sectionHeaderStyle()
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        promptModeSelection = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.textSecondary)
+                        .padding(8)
+                        .background(Color.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close prompt actions")
+                .accessibilityHint("Return to board without opening an action.")
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.top, Spacing.md)
+
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(selection.label.uppercased())
+                    .font(.groveBadge)
+                    .tracking(0.8)
+                    .foregroundStyle(Color.textSecondary)
+
+                Text(selection.prompt)
+                    .font(.groveBody)
+                    .foregroundStyle(Color.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.borderPrimary, lineWidth: 1)
+            )
+            .padding(.horizontal, Spacing.md)
+
+            VStack(spacing: Spacing.sm) {
+                Button {
+                    startDialectic(with: selection)
+                } label: {
+                    Label("Open Dialectics", systemImage: "bubble.left.and.bubble.right")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.md)
+                        .padding(.vertical, Spacing.sm)
+                        .background(Color.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    startWriting(with: selection.prompt)
+                } label: {
+                    Label("Start Writing", systemImage: "square.and.pencil")
+                        .font(.groveBody)
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Spacing.md)
+                        .padding(.vertical, Spacing.sm)
+                        .background(Color.bgCard)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, Spacing.md)
+
+            Spacer(minLength: 0)
+        }
+        .background(Color.bgInspector)
+    }
+
+    private func startDialectic(with selection: PromptModeSelection) {
+        defer { promptModeSelection = nil }
+        let prompt = selection.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else {
+            openConversation(with: "")
+            return
+        }
+        openConversation(with: prompt, seedItemIDs: selection.scopedSeedItemIDs)
+    }
+
+    private func startWriting(with prompt: String?) {
+        defer { promptModeSelection = nil }
+        guard let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            NotificationCenter.default.post(name: .groveNewNote, object: nil)
+            return
+        }
+        NotificationCenter.default.post(name: .groveNewNoteWithPrompt, object: prompt)
+    }
+
+    private func openConversation(with prompt: String, seedItemIDs: [UUID] = []) {
         NotificationCenter.default.postConversationPrompt(
             ConversationPromptPayload(
-                prompt: bubble.prompt,
-                seedItemIDs: scopedSeedIDs.isEmpty ? bubble.clusterItemIDs : scopedSeedIDs
+                prompt: prompt,
+                seedItemIDs: seedItemIDs,
+                injectionMode: .asSystemPrompt
             )
         )
+    }
+
+    private func scopedSeedItemIDs(for bubble: PromptBubble) -> [UUID] {
+        let boardItemIDs = Set(effectiveItems.map(\.id))
+        let scopedSeedIDs = bubble.clusterItemIDs.filter { boardItemIDs.contains($0) }
+        return scopedSeedIDs.isEmpty ? bubble.clusterItemIDs : scopedSeedIDs
     }
 
     // MARK: - Keyboard Handlers

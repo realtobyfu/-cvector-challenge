@@ -23,6 +23,9 @@ struct HomeView: View {
     @Binding var selectedItem: Item?
     @Binding var openedItem: Item?
     @Environment(\.modelContext) private var modelContext
+    @Environment(EntitlementService.self) private var entitlement
+    @Environment(OnboardingService.self) private var onboarding
+    @Environment(PaywallCoordinator.self) private var paywallCoordinator
     @Query(sort: \Item.updatedAt, order: .reverse) private var allItems: [Item]
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var allConversations: [Conversation]
 
@@ -32,6 +35,7 @@ struct HomeView: View {
     @State private var isItemsCollapsed = false
     @State private var isConversationsCollapsed = false
     @State private var promptModeSelection: PromptModeSelection? = nil
+    @State private var paywallPresentation: PaywallPresentation?
 
     private var inboxCount: Int {
         allItems.filter { $0.status == .inbox }.count
@@ -56,6 +60,16 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     CaptureBarView()
                         .padding(.bottom, Spacing.sm)
+
+                    if onboarding.shouldShowHomeReminder {
+                        onboardingReminderBanner
+                            .padding(.bottom, Spacing.xl)
+                    }
+
+                    if onboarding.shouldShowHomeTeaser && !entitlement.isPro {
+                        proTeaserCard
+                            .padding(.bottom, Spacing.xl)
+                    }
 
                     inboxSection
                         .padding(.bottom, Spacing.xl)
@@ -96,6 +110,97 @@ struct HomeView: View {
             await starterService.refresh(items: allItems)
         }
         .animation(.easeInOut(duration: 0.2), value: promptModeSelection != nil)
+        .sheet(item: $paywallPresentation) { presentation in
+            ProPaywallView(presentation: presentation)
+        }
+    }
+
+    // MARK: - Home Banners
+
+    private var onboardingReminderBanner: some View {
+        HStack(alignment: .top, spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("ONBOARDING")
+                    .font(.groveBadge)
+                    .tracking(0.8)
+                    .foregroundStyle(Color.textSecondary)
+                Text("Want a quick setup refresher?")
+                    .font(.groveBody)
+                    .foregroundStyle(Color.textPrimary)
+                Text("Replay the guided flow anytime to capture, organize, and start Dialectics in one pass.")
+                    .font(.groveBodySmall)
+                    .foregroundStyle(Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: Spacing.xs) {
+                Button("Replay") {
+                    onboarding.presentReplay()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Dismiss") {
+                    onboarding.dismissHomeReminder()
+                }
+                .buttonStyle(.plain)
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textSecondary)
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.bgCard)
+        .clipShape(.rect(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.borderPrimary, lineWidth: 1)
+        )
+    }
+
+    private var proTeaserCard: some View {
+        HStack(alignment: .top, spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("PRO")
+                    .font(.groveBadge)
+                    .tracking(0.8)
+                    .foregroundStyle(Color.textSecondary)
+                Text("Unlock advanced workflows")
+                    .font(.groveBody)
+                    .foregroundStyle(Color.textPrimary)
+                Text("Enable cross-device sync, full conversation memory, automation controls, and smart cloud fallback.")
+                    .font(.groveBodySmall)
+                    .foregroundStyle(Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: Spacing.xs) {
+                Button("Explore Pro") {
+                    paywallPresentation = paywallCoordinator.present(
+                        feature: nil,
+                        source: .homeTeaser,
+                        bypassCooldown: true
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Dismiss") {
+                    onboarding.dismissHomeTeaser()
+                }
+                .buttonStyle(.plain)
+                .font(.groveBodySmall)
+                .foregroundStyle(Color.textSecondary)
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.bgCard)
+        .clipShape(.rect(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.borderPrimary, lineWidth: 1)
+        )
     }
 
     // MARK: - Inbox Section
@@ -401,7 +506,11 @@ struct HomeView: View {
 
     private func openConversation(with prompt: String, seedItemIDs: [UUID] = []) {
         NotificationCenter.default.postConversationPrompt(
-            ConversationPromptPayload(prompt: prompt, seedItemIDs: seedItemIDs)
+            ConversationPromptPayload(
+                prompt: prompt,
+                seedItemIDs: seedItemIDs,
+                injectionMode: .asSystemPrompt
+            )
         )
     }
 

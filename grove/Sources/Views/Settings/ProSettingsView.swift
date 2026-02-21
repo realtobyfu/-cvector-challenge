@@ -2,7 +2,8 @@ import SwiftUI
 
 struct ProSettingsView: View {
     @Environment(EntitlementService.self) private var entitlement
-    @State private var showPaywall = false
+    @Environment(PaywallCoordinator.self) private var paywallCoordinator
+    @State private var paywallPresentation: PaywallPresentation?
 
     var body: some View {
         Form {
@@ -35,7 +36,11 @@ struct ProSettingsView: View {
                         .foregroundStyle(Color.textSecondary)
                 } else {
                     Button("View Pro Plan") {
-                        showPaywall = true
+                        paywallPresentation = paywallCoordinator.present(
+                            feature: nil,
+                            source: .proSettings,
+                            bypassCooldown: true
+                        )
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -70,8 +75,8 @@ struct ProSettingsView: View {
 #endif
         }
         .formStyle(.grouped)
-        .sheet(isPresented: $showPaywall) {
-            ProPaywallView(focusedFeature: nil)
+        .sheet(item: $paywallPresentation) { presentation in
+            ProPaywallView(presentation: presentation)
         }
     }
 }

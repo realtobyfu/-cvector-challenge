@@ -29,15 +29,26 @@ extension Notification.Name {
 struct ConversationPromptPayload {
     let prompt: String
     let seedItemIDs: [UUID]
+    let injectionMode: ConversationPromptInjectionMode
 
-    init(prompt: String, seedItemIDs: [UUID] = []) {
+    init(
+        prompt: String,
+        seedItemIDs: [UUID] = [],
+        injectionMode: ConversationPromptInjectionMode = .asUserMessage
+    ) {
         self.prompt = prompt
         self.seedItemIDs = seedItemIDs
+        self.injectionMode = injectionMode
     }
 }
 
 struct DiscussItemPayload {
     let item: Item
+}
+
+enum ConversationPromptInjectionMode: String {
+    case asUserMessage
+    case asSystemPrompt
 }
 
 extension NotificationCenter {
@@ -46,6 +57,7 @@ extension NotificationCenter {
         if !payload.seedItemIDs.isEmpty {
             userInfo["seedItemIDs"] = payload.seedItemIDs
         }
+        userInfo["injectionMode"] = payload.injectionMode.rawValue
         post(
             name: .groveStartConversationWithPrompt,
             object: payload.prompt,
@@ -56,7 +68,15 @@ extension NotificationCenter {
     static func conversationPromptPayload(from notification: Notification) -> ConversationPromptPayload {
         let prompt = notification.object as? String ?? ""
         let seedIDs = notification.userInfo?["seedItemIDs"] as? [UUID] ?? []
-        return ConversationPromptPayload(prompt: prompt, seedItemIDs: seedIDs)
+        let injectionModeRaw = notification.userInfo?["injectionMode"] as? String
+        let injectionMode = injectionModeRaw
+            .flatMap(ConversationPromptInjectionMode.init(rawValue:))
+            ?? .asUserMessage
+        return ConversationPromptPayload(
+            prompt: prompt,
+            seedItemIDs: seedIDs,
+            injectionMode: injectionMode
+        )
     }
 
     func postDiscussItem(_ payload: DiscussItemPayload) {

@@ -4,6 +4,7 @@ import SwiftUI
 /// Keeps core setup visible and tucks diagnostics behind advanced disclosure groups.
 struct AISettingsView: View {
     @Environment(EntitlementService.self) private var entitlement
+    @Environment(PaywallCoordinator.self) private var paywallCoordinator
     @State private var isEnabled = LLMServiceConfig.isEnabled
     @State private var providerType = LLMServiceConfig.providerType
     @State private var apiKey = LLMServiceConfig.apiKey
@@ -12,8 +13,7 @@ struct AISettingsView: View {
     @State private var smartRoutingEnabled = LLMServiceConfig.smartRoutingEnabled
     @State private var showAdvancedProvider = false
     @State private var showAdvancedUsage = false
-    @State private var showPaywall = false
-    @State private var paywallFeature: ProFeature?
+    @State private var paywallPresentation: PaywallPresentation?
     @State private var refreshID = UUID()
     @State private var budgetEnabled: Bool = TokenTracker.shared.budgetEnabled
     @State private var budgetText: String = {
@@ -123,14 +123,10 @@ struct AISettingsView: View {
 
             Section("Routing") {
                 Toggle("Smart cloud fallback", isOn: $smartRoutingEnabled)
+                    .disabled(!entitlement.hasAccess(to: .smartRouting))
                     .onChange(of: smartRoutingEnabled) { _, newValue in
                         guard newValue else {
                             LLMServiceConfig.smartRoutingEnabled = false
-                            return
-                        }
-                        guard entitlement.hasAccess(to: .smartRouting) else {
-                            smartRoutingEnabled = false
-                            presentPaywall(for: .smartRouting)
                             return
                         }
                         LLMServiceConfig.smartRoutingEnabled = true
@@ -151,7 +147,14 @@ struct AISettingsView: View {
                     }
 
                     Button("Unlock Pro") {
-                        presentPaywall(for: .smartRouting)
+                        paywallPresentation = paywallCoordinator.present(
+                            feature: .smartRouting,
+                            source: .aiSettings,
+                            pendingAction: {
+                                smartRoutingEnabled = true
+                                LLMServiceConfig.smartRoutingEnabled = true
+                            }
+                        )
                     }
                     .buttonStyle(.bordered)
                 }
@@ -246,8 +249,8 @@ struct AISettingsView: View {
         .onChange(of: entitlement.state.updatedAt) {
             smartRoutingEnabled = LLMServiceConfig.smartRoutingEnabled
         }
-        .sheet(isPresented: $showPaywall) {
-            ProPaywallView(focusedFeature: paywallFeature)
+        .sheet(item: $paywallPresentation) { presentation in
+            ProPaywallView(presentation: presentation)
         }
     }
 
@@ -428,10 +431,5 @@ struct AISettingsView: View {
         case "dialectics": return "Dialectics"
         default: return service.capitalized
         }
-    }
-
-    private func presentPaywall(for feature: ProFeature) {
-        paywallFeature = feature
-        showPaywall = true
     }
 }

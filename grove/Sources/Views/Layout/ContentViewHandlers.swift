@@ -136,7 +136,11 @@ struct ContentViewNotificationHandlers: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .groveStartConversationWithPrompt)) { notification in
                 let payload = NotificationCenter.conversationPromptPayload(from: notification)
-                startConversation(withPrompt: payload.prompt, seedItemIDs: payload.seedItemIDs)
+                startConversation(
+                    withPrompt: payload.prompt,
+                    seedItemIDs: payload.seedItemIDs,
+                    injectionMode: payload.injectionMode
+                )
             }
             .onReceive(NotificationCenter.default.publisher(for: .groveDiscussItem)) { notification in
                 guard let payload = NotificationCenter.discussItemPayload(from: notification) else { return }
@@ -183,7 +187,11 @@ struct ContentViewNotificationHandlers: ViewModifier {
             }
     }
 
-    private func startConversation(withPrompt prompt: String, seedItemIDs: [UUID] = []) {
+    private func startConversation(
+        withPrompt prompt: String,
+        seedItemIDs: [UUID] = [],
+        injectionMode: ConversationPromptInjectionMode = .asUserMessage
+    ) {
         var seedItems: [Item] = []
         if !seedItemIDs.isEmpty {
             let all = (try? modelContext.fetch(FetchDescriptor<Item>())) ?? []
@@ -197,13 +205,28 @@ struct ContentViewNotificationHandlers: ViewModifier {
             context: modelContext
         )
 
-        if !prompt.isEmpty {
-            Task { @MainActor in
-                _ = await service.sendMessage(
-                    userText: prompt,
-                    conversation: conversation,
-                    context: modelContext
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPrompt.isEmpty {
+            switch injectionMode {
+            case .asUserMessage:
+                Task { @MainActor in
+                    _ = await service.sendMessage(
+                        userText: trimmedPrompt,
+                        conversation: conversation,
+                        context: modelContext
+                    )
+                }
+            case .asSystemPrompt:
+                let systemPromptMsg = ChatMessage(
+                    role: .system,
+                    content: trimmedPrompt,
+                    position: conversation.nextPosition
                 )
+                systemPromptMsg.conversation = conversation
+                conversation.messages.append(systemPromptMsg)
+                modelContext.insert(systemPromptMsg)
+                conversation.updatedAt = .now
+                try? modelContext.save()
             }
         }
 

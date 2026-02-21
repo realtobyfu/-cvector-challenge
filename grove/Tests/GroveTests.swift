@@ -39,6 +39,65 @@ struct GroveTests {
     }
 
     @MainActor
+    @Test func onboardingServiceAutoPresentsForEmptyWorkspace() {
+        let defaults = testDefaults()
+        let service = OnboardingService(defaults: defaults)
+
+        service.evaluateAutoPresentation(itemCount: 0, boardCount: 0)
+
+        #expect(service.isPresented)
+        #expect(service.progress.currentStep == .capture)
+    }
+
+    @MainActor
+    @Test func onboardingServicePersistsCompletionVersion() {
+        let defaults = testDefaults()
+        let service = OnboardingService(defaults: defaults)
+
+        service.complete()
+
+        #expect(service.progress.completedVersion == OnboardingService.currentVersion)
+        #expect(service.progress.skippedAt == nil)
+    }
+
+    @MainActor
+    @Test func paywallCoordinatorAppliesCooldownAfterDismissal() {
+        let defaults = testDefaults()
+        let entitlement = EntitlementService(defaults: defaults)
+        let coordinator = PaywallCoordinator(defaults: defaults, entitlement: entitlement)
+
+        let presentation = coordinator.present(feature: .sync, source: .syncSettings)
+        #expect(presentation != nil)
+        if let presentation {
+            coordinator.dismiss(presentation, converted: false)
+        }
+
+        #expect(coordinator.isInCooldown(for: .sync))
+    }
+
+    @MainActor
+    @Test func paywallCoordinatorRunsPendingActionAfterConversion() {
+        let defaults = testDefaults()
+        let entitlement = EntitlementService(defaults: defaults)
+        let coordinator = PaywallCoordinator(defaults: defaults, entitlement: entitlement)
+        var didRunPendingAction = false
+
+        let presentation = coordinator.present(
+            feature: .smartRouting,
+            source: .aiSettings,
+            pendingAction: { didRunPendingAction = true }
+        )
+
+        #expect(presentation != nil)
+        if let presentation {
+            coordinator.dismiss(presentation, converted: true)
+        }
+
+        #expect(didRunPendingAction)
+        #expect(!coordinator.isInCooldown(for: .smartRouting))
+    }
+
+    @MainActor
     @Test func conversationStarterServiceCapsLLMResultsAtThree() async {
         UserDefaults.standard.removeObject(forKey: "grove.conversationStarters")
 

@@ -4,6 +4,7 @@ import SwiftData
 struct DialecticalChatPanel: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(EntitlementService.self) private var entitlement
+    @Environment(PaywallCoordinator.self) private var paywallCoordinator
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
     @Binding var selectedConversation: Conversation?
     @Binding var isVisible: Bool
@@ -23,7 +24,7 @@ struct DialecticalChatPanel: View {
     @State private var conversationToDelete: Conversation?
     @State private var conversationListQuery = ""
     @State private var conversationListSelectionID: UUID?
-    @State private var showHistoryPaywall = false
+    @State private var paywallPresentation: PaywallPresentation?
     @FocusState private var isConversationListSearchFocused: Bool
 
     private var activeConversation: Conversation? {
@@ -83,8 +84,8 @@ struct DialecticalChatPanel: View {
         .sheet(item: $noteMessage) { message in
             saveNoteSheet(for: message)
         }
-        .sheet(isPresented: $showHistoryPaywall) {
-            ProPaywallView(focusedFeature: .fullHistory)
+        .sheet(item: $paywallPresentation) { presentation in
+            ProPaywallView(presentation: presentation)
         }
         .alert(
             "Delete Conversation Permanently?",
@@ -234,8 +235,34 @@ struct DialecticalChatPanel: View {
     private func messageBubble(_ message: ChatMessage, conversation: Conversation) -> some View {
         if message.role == .user {
             userBubble(message)
+        } else if message.role == .system {
+            systemBubble(message)
         } else if message.role == .assistant {
             assistantBubble(message, conversation: conversation)
+        }
+    }
+
+    private func systemBubble(_ message: ChatMessage) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("DISCUSSION PROMPT")
+                    .font(.groveBadge)
+                    .tracking(0.8)
+                    .foregroundStyle(Color.textSecondary)
+                Text(message.content)
+                    .font(.groveBody)
+                    .foregroundStyle(Color.textPrimary)
+                    .textSelection(.enabled)
+            }
+            .padding(Spacing.md)
+            .background(Color.bgCard)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.borderPrimary, lineWidth: 1)
+            )
+
+            Spacer(minLength: 40)
         }
     }
 
@@ -554,7 +581,10 @@ struct DialecticalChatPanel: View {
                         }
                         Spacer()
                         Button("Unlock Pro") {
-                            showHistoryPaywall = true
+                            paywallPresentation = paywallCoordinator.present(
+                                feature: .fullHistory,
+                                source: .chatHistory
+                            )
                         }
                         .buttonStyle(.bordered)
                     }
