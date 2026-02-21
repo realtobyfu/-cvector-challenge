@@ -120,18 +120,20 @@ export default function App() {
           </div>
         ) : dashboard ? (
           <>
-            {/* Row 1: Status overview + key metrics */}
+            <div className="section-label"><span className="section-label-prefix">&gt; </span>system status</div>
             <StatusOverview dashboard={dashboard} />
+
+            <div className="section-label"><span className="section-label-prefix">&gt; </span>facility metrics</div>
             <MetricCards summaries={dashboard.metric_summaries} />
 
-            {/* Row 2: Time-series chart */}
+            <div className="section-label"><span className="section-label-prefix">&gt; </span>time series</div>
             <TimeSeriesChart
               facilityId={facilityId}
               metrics={metrics || []}
               assets={dashboard.asset_statuses || []}
             />
 
-            {/* Row 3: Asset status table */}
+            <div className="section-label"><span className="section-label-prefix">&gt; </span>asset registry</div>
             <AssetTable assets={dashboard.asset_statuses} />
           </>
         ) : null}
