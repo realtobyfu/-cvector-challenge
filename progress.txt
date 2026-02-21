@@ -30,6 +30,14 @@ Started: Fri Feb 20 23:04:27 HST 2026
 - Status dot uses inline style with STATUS_COLORS map (var(--green) etc.)
 - CSS classes match design-reference.html exactly: .asset-table, .a-name, .a-type, .a-status, .readings, .r-item, .r-label, .r-val, .r-unit
 
+## Iteration 4 — US-008: Footer and final polish
+- Added .page-footer with flex space-between, 1px top border, 10px text in --text-4
+- Wrapped each section in .section-gap div (margin-bottom: 36px) for consistent spacing
+- Updated .app-content: max-width 1400px (was 1440px), padding 28px 32px 56px
+- Header padding updated to 32px to match design reference
+- Removed individual margin-bottom from .status-overview, .metric-cards, .chart-section
+- All 8 user stories now pass — Terminal Light redesign complete
+
 ### Codebase Patterns
 - Backend python: use `.venv/bin/python3` in backend/ dir
 - CSS vars defined in :root in app.css — always use var() references
