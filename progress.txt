@@ -1,33 +1,30 @@
 # Ralph Progress Log
-Started: Thu Feb 19 22:33:31 HST 2026
+Started: Fri Feb 20 23:04:27 HST 2026
 ---
-- US-001 (2026-02-19): Home discussion starters are now decision-light by enforcing a hard 3-starter cap in both `HomeView` and `ConversationStarterService` (including cached loads), and by always returning one fallback REFLECT starter when context is empty.
-- Added regression tests for starter cap and empty-context fallback in `grove/Tests/GroveTests.swift` to keep LLM/heuristic behavior stable.
-- US-002 (2026-02-19): Home starter handoff now keeps full prompt metadata through mode selection and sends Dialectics launches via `groveStartConversationWithPrompt`, passing `clusterItemIDs` as `seedItemIDs` so ORGANIZE starters carry their intended context.
-- Added payload parsing tests in `grove/Tests/GroveTests.swift` to guard prompt + seed-ID extraction from `groveStartConversationWithPrompt` notifications.
-- US-003 (2026-02-19): `MarkdownTextView` now emits real link attributes for `[[wiki-links]]` via a custom `grove-wikilink://` URL and resolves taps through `openURL` into the existing `onWikiLinkTap` callback used by chat and reader surfaces.
-- Reader learnings: wrapping markdown in a parent `Button` prevents embedded links from being actionable; moving edit affordance to an explicit header button keeps reflection editing while allowing wiki-link navigation.
-- US-004 (2026-02-19): Dialectics conversation history popover now includes an auto-focused search field with live filtering across conversation titles and visible message content, plus up/down/return keyboard selection and separate empty states for no conversations vs no search results.
-- Keyboard-state learning: keep a dedicated selected conversation ID synchronized with filtered IDs so arrow navigation remains stable as the query changes or conversations are deleted.
-- US-005 (2026-02-19): Global search overlay now autofocuses on open and updates query via a debounced, cancellable task path (`SearchViewModel.updateQuery`) so typing no longer runs immediate synchronous searches on every keypress.
-- Search perf learning: cache fetched search entities for the active overlay session and guard async result application with a generation counter to prevent stale debounced tasks from overwriting newer query results.
-- US-006 (2026-02-19): Nudge settings now align with the simplified engine by exposing only active controls (resurface, stale inbox, cadence, and resurfacing queue), removing legacy/smart category toggles and analytics rows.
-- Nudge model/settings learning: keep legacy `NudgeType` cases for persisted SwiftData compatibility, but treat them as non-configurable by returning `false` from `NudgeSettings.isEnabled(for:)` so dead categories are never considered active behavior.
-- Weekly digest learning: digest controls were misleading because digest scheduling is not part of the active nudge engine; the nudge settings surface now labels digest as manual-only and keeps only last-generated metadata.
-- US-007 (2026-02-19): Wired Command menu Quick Capture to `openWindow(id: "quick-capture")`, matching the menu bar utility so Cmd+Shift+K reliably opens the Quick Capture window.
-- Command routing learning: if an action's destination is a SwiftUI window scene, using `openWindow` directly avoids dead notification paths and keeps shortcut behavior consistent.
-- US-008 (2026-02-19): Standardized user-facing naming to `Dialectics` across chat, Home starter actions, View menu toggle, and AI service labels to remove lingering `Dialectical Chat`/`Dialectic` wording drift.
-- Shortcut docs learning: the Shortcuts settings page stays trustworthy when it mirrors command menu labels/keys exactly (`Go to Home`, `Toggle Dialectics` with `⌘⇧D`, and `Export Selected Item...`) and drops stale rows that no longer map to menu commands.
-- US-009 (2026-02-19): Added explicit accessibility labels/hints for icon-only controls in Home, Sidebar, Dialectics, Capture, Search, and Inspector so VoiceOver users get clear action names and intent cues.
-- Accessibility checklist (US-009): Home prompt-actions close button; Sidebar new board/new course/delete conversation buttons; Dialectics header/send/search-clear/delete controls; Capture close/send/suggestion-dismiss controls; Search overlay clear/close controls; Inspector add/delete connection buttons.
-- Accessibility implementation learning: `.help(...)` tooltips are useful for pointer users but do not replace explicit accessibility labels/hints for assistive technologies.
-- US-010 (2026-02-19): Rebalanced `textSecondary`, `textTertiary`, and `textMuted` light/dark asset values so metadata text reaches WCAG AA contrast across core backgrounds while preserving token hierarchy.
-- Contrast regression learning: keep a repeatable asset-level check (`python3 scripts/check_token_contrast.py`) to catch low-contrast token drift early; current floor is 4.53 (`textMuted` on `bgSidebar`).
-- US-011 (2026-02-19): Added a visible relationship legend in `GraphVisualizationView` with per-type toggle chips (`buildsOn`, `contradicts`, `related`, `inspiredBy`, `sameTopic`) and combined those type filters with existing board/tag graph filtering.
-- Graph interpretability learning: sharing one `ConnectionType` style map between legend swatches and SpriteKit edge rendering keeps edge semantics consistent while empty-state messaging can separately explain “no items” vs “no matching connections.”
-- US-012 (2026-02-19): Removed invisible zero-size keyboard shortcut buttons from `InboxTriageView` and `BoardDetailView`, replacing them with scoped `.onKeyPress` handlers so `j/k/1/2/3/enter` triage and board navigation stay in-view rather than global hacks.
-- Keyboard scope learning: guarding key handlers with key-window first-responder checks (`NSTextView`/`NSTextInputClient`) keeps navigation shortcuts inert while any text field or editor is actively focused.
-- US-013 (2026-02-19): Updated `create_synthesis` tool output to return the newly created synthesis as a direct wiki-link (`[[Title]]`) alongside the stable item ID, while keeping source wiki-links and missing-title diagnostics intact.
-- Dialectics artifact-linking learning: write-tool confirmations are more reusable when the primary created artifact is emitted in canonical wiki-link form, not quoted plain text.
-- US-014 (2026-02-19): Standardized board suggestion auto-dismiss timing via `AppConstants.Capture.boardSuggestionAutoDismissSeconds` and updated both capture bar variants to use the shared 5-second value.
-- Timing-contract learning: centralizing UX timeouts in `AppConstants` prevents drift between parallel UI surfaces and keeps behavior aligned with DESIGN.md.
+
+## Iteration 1 — US-001: Terminal Light design foundation
+- Replaced JetBrains Mono + IBM Plex Sans with IBM Plex Mono in index.html
+- Rewrote all CSS custom properties in app.css to match DESIGN.md palette
+- Updated main.jsx: disabled dark algorithm, set colorPrimary=#1a7a4f, borderRadius=0, white backgrounds
+- Backend needs Python 3.9 venv: `.venv/bin/python3` (Python 3.14 can't build pydantic-core)
+- Frontend needs `npm install` before build (node_modules not in repo)
+
+## Iteration 2 — US-006: Restyle TimeSeriesChart to Terminal Light
+- Replaced Ant Segmented with custom `.t-btn` connected button strip (margin-left: -1px trick)
+- Chart lines: green solid (primary), amber dashed (secondary), blue solid (tertiary) — matches DESIGN.md
+- Gradient fills only for solid lines, not dashed; 8% opacity per spec
+- Restructured chart into three sub-sections: `.chart-top` (header), `.chart-body`, `.chart-footer`
+- Footer legend uses snake_case asset names + current values, matching design reference
+- Recharts end dots: custom `EndDot` component that only renders on last data point index
+- Dashed lines get open (stroke-only) end circles, solid lines get filled circles
+- Light-themed tooltip replaces dark tooltip — uses CSS classes in app.css
+- Removed old `.chart-header`, `.chart-title`, `.chart-controls` CSS classes
+- Vite dev server needs explicit `npx vite --port 5173` when `npm run dev` doesn't bind
+
+### Codebase Patterns
+- Backend python: use `.venv/bin/python3` in backend/ dir
+- CSS vars defined in :root in app.css — always use var() references
+- Ant Design theme tokens in main.jsx ConfigProvider — keep in sync with CSS vars
+- Chart line styles defined in `CHART_LINES` array in TimeSeriesChart.jsx
+- Custom time buttons use `.t-btn` / `.t-btn.active` classes (not Ant Segmented)
+- Chart sections: `.chart-top` (header with border-bottom), `.chart-body` (padded), `.chart-footer` (bg-subtle)
