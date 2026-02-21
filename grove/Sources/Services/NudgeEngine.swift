@@ -154,6 +154,7 @@ final class NudgeEngine: NudgeEngineProtocol {
         resurfacingService.markResurfaced(chosen)
         modelContext.insert(nudge)
         try? modelContext.save()
+        NudgeNotificationService.shared.schedule(for: nudge)
     }
 
     /// Fallback for items without annotations/connections — uses the original
@@ -187,6 +188,7 @@ final class NudgeEngine: NudgeEngineProtocol {
         let nudge = Nudge(type: .resurface, message: message, targetItem: chosen)
         modelContext.insert(nudge)
         try? modelContext.save()
+        NudgeNotificationService.shared.schedule(for: nudge)
     }
 
     // MARK: - Stale Inbox Nudge
@@ -221,6 +223,7 @@ final class NudgeEngine: NudgeEngineProtocol {
         let nudge = Nudge(type: .staleInbox, message: message)
         modelContext.insert(nudge)
         try? modelContext.save()
+        NudgeNotificationService.shared.schedule(for: nudge)
     }
 
     // MARK: - Per-Board Frequency

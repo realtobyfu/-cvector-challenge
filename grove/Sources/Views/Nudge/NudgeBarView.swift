@@ -114,6 +114,7 @@ struct NudgeBarView: View {
                     nudge.status = .shown
                     try? modelContext.save()
                 }
+                NudgeNotificationService.shared.cancel(for: nudge.id)
             }
             .onChange(of: currentNudge?.id) {
                 showReflectionPrompt = false
@@ -138,6 +139,7 @@ struct NudgeBarView: View {
             NudgeSettings.recordAction(type: nudge.type, actedOn: true)
             try? modelContext.save()
         }
+        NudgeNotificationService.shared.cancel(for: nudge.id)
 
         reflectionText = ""
         showReflectionPrompt = false
@@ -153,6 +155,7 @@ struct NudgeBarView: View {
             NudgeSettings.recordAction(type: nudge.type, actedOn: true)
             try? modelContext.save()
         }
+        NudgeNotificationService.shared.cancel(for: nudge.id)
 
         switch nudge.type {
         case .resurface, .continueCourse, .reflectionPrompt, .contradiction,
@@ -175,6 +178,7 @@ struct NudgeBarView: View {
             NudgeSettings.recordAction(type: nudge.type, actedOn: false)
             try? modelContext.save()
         }
+        NudgeNotificationService.shared.cancel(for: nudge.id)
     }
 }
 

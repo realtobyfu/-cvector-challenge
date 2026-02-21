@@ -46,6 +46,7 @@ struct ContentViewEventHandlers: ViewModifier {
                 inspectorUserOverride: $inspectorUserOverride,
                 selection: $selection,
                 selectedItem: $selectedItem,
+                openedItem: $openedItem,
                 nudgeEngine: $nudgeEngine,
                 columnVisibility: $columnVisibility,
                 savedColumnVisibility: $savedColumnVisibility,
@@ -70,6 +71,7 @@ struct ContentViewNotificationHandlers: ViewModifier {
     @Binding var inspectorUserOverride: Bool?
     @Binding var selection: SidebarItem?
     @Binding var selectedItem: Item?
+    @Binding var openedItem: Item?
     @Binding var nudgeEngine: NudgeEngine?
     @Binding var columnVisibility: NavigationSplitViewVisibility
     @Binding var savedColumnVisibility: NavigationSplitViewVisibility?
@@ -150,6 +152,14 @@ struct ContentViewNotificationHandlers: ViewModifier {
                 let prompt = notification.object as? String ?? ""
                 startDialecticWithDisplayPrompt(prompt)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .groveOpenNudgeNotification)) { notification in
+                guard let nudgeID = notification.object as? UUID else { return }
+                openNudgeFromNotification(id: nudgeID)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .groveDismissNudgeNotification)) { notification in
+                guard let nudgeID = notification.object as? UUID else { return }
+                dismissNudgeFromNotification(id: nudgeID)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .groveEnterFocusMode)) { _ in
                 savedColumnVisibility = columnVisibility
                 savedInspectorOverride = inspectorUserOverride
@@ -176,6 +186,7 @@ struct ContentViewNotificationHandlers: ViewModifier {
                 }
             }
             .onAppear {
+                NudgeNotificationService.shared.configure()
                 guard nudgeEngine == nil else { return }
                 let engine = NudgeEngine(modelContext: modelContext)
                 engine.startSchedule()
@@ -185,6 +196,55 @@ struct ContentViewNotificationHandlers: ViewModifier {
                 nudgeEngine?.stopSchedule()
                 nudgeEngine = nil
             }
+    }
+
+    private func openNudgeFromNotification(id: UUID) {
+        guard let nudge = nudge(withID: id),
+              nudge.status == .pending || nudge.status == .shown
+        else {
+            NudgeNotificationService.shared.cancel(for: id)
+            return
+        }
+
+        nudge.status = .actedOn
+        NudgeSettings.recordAction(type: nudge.type, actedOn: true)
+        NudgeNotificationService.shared.cancel(for: id)
+        try? modelContext.save()
+
+        switch nudge.type {
+        case .resurface, .continueCourse, .reflectionPrompt, .contradiction,
+             .knowledgeGap, .synthesisPrompt:
+            guard let item = nudge.targetItem else { return }
+            selectedItem = item
+            openedItem = item
+        case .staleInbox:
+            openedItem = nil
+            selectedItem = nil
+            selection = .library
+        case .dialecticalCheckIn:
+            startCheckInConversation(from: nudge)
+        case .connectionPrompt, .streak:
+            break
+        }
+    }
+
+    private func dismissNudgeFromNotification(id: UUID) {
+        guard let nudge = nudge(withID: id),
+              nudge.status == .pending || nudge.status == .shown
+        else {
+            NudgeNotificationService.shared.cancel(for: id)
+            return
+        }
+
+        nudge.status = .dismissed
+        NudgeSettings.recordAction(type: nudge.type, actedOn: false)
+        NudgeNotificationService.shared.cancel(for: id)
+        try? modelContext.save()
+    }
+
+    private func nudge(withID id: UUID) -> Nudge? {
+        let allNudges = (try? modelContext.fetch(FetchDescriptor<Nudge>())) ?? []
+        return allNudges.first(where: { $0.id == id })
     }
 
     private func startConversation(

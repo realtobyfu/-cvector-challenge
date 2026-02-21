@@ -61,6 +61,7 @@ struct GroveApp: App {
         WindowGroup {
             ContentView(syncService: syncService)
                 .task {
+                    NudgeNotificationService.shared.configure()
                     let context = modelContainer.mainContext
                     AnnotationMigrationService.migrateIfNeeded(context: context)
                 }

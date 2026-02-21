@@ -22,6 +22,8 @@ extension Notification.Name {
     static let groveDiscussItem = Notification.Name("groveDiscussItem")
     static let groveStartDialecticWithDisplayPrompt = Notification.Name("groveStartDialecticWithDisplayPrompt")
     static let groveOpenReflectMode = Notification.Name("groveOpenReflectMode")
+    static let groveOpenNudgeNotification = Notification.Name("groveOpenNudgeNotification")
+    static let groveDismissNudgeNotification = Notification.Name("groveDismissNudgeNotification")
 }
 
 // MARK: - Typed Notification Payloads
