@@ -179,18 +179,17 @@ body {
 /* ── Status overview row ── */
 .status-overview {
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 10px;
+  margin-bottom: 24px;
 }
 
 .status-pill {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  padding: 12px 20px 10px;
   background: var(--bg);
   border: 1px solid var(--border);
-  font-size: 13px;
   font-family: var(--font-mono);
 }
 
@@ -198,16 +197,9 @@ body {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 24px;
-  margin-right: 2px;
+  line-height: 1;
   color: var(--text);
 }
-
-.status-pill.operational { border-color: var(--green); background: var(--green-bg); }
-.status-pill.operational .count { color: var(--green); }
-.status-pill.warning { border-color: var(--amber); background: var(--amber-bg); }
-.status-pill.warning .count { color: var(--amber); }
-.status-pill.critical .count { color: var(--red); }
-.status-pill.offline .count { color: var(--text-3); }
 
 .status-pill .label {
   color: var(--text-3);
@@ -215,7 +207,21 @@ body {
   font-size: 10px;
   letter-spacing: 0.8px;
   font-weight: 500;
+  margin-top: 4px;
 }
+
+.status-pill.operational { border-color: var(--green); background: var(--green-bg); }
+.status-pill.operational .count { color: var(--green); }
+.status-pill.operational .label { color: var(--green); }
+.status-pill.warning { border-color: var(--amber); background: var(--amber-bg); }
+.status-pill.warning .count { color: var(--amber); }
+.status-pill.warning .label { color: var(--amber); }
+.status-pill.critical { border-color: var(--border); }
+.status-pill.critical .count { color: var(--red); }
+.status-pill.critical .label { color: var(--red); }
+.status-pill.offline { border-color: var(--border); }
+.status-pill.offline .count { color: var(--text-3); }
+.status-pill.offline .label { color: var(--text-3); }
 
 /* ── Metric cards grid ── */
 .metric-cards {
