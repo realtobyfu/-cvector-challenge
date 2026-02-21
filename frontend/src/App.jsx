@@ -120,21 +120,34 @@ export default function App() {
           </div>
         ) : dashboard ? (
           <>
-            <div className="section-label"><span className="section-label-prefix">&gt; </span>system status</div>
-            <StatusOverview dashboard={dashboard} />
+            <div className="section-gap">
+              <div className="section-label"><span className="section-label-prefix">&gt; </span>system status</div>
+              <StatusOverview dashboard={dashboard} />
+            </div>
 
-            <div className="section-label"><span className="section-label-prefix">&gt; </span>facility metrics</div>
-            <MetricCards summaries={dashboard.metric_summaries} />
+            <div className="section-gap">
+              <div className="section-label"><span className="section-label-prefix">&gt; </span>facility metrics</div>
+              <MetricCards summaries={dashboard.metric_summaries} />
+            </div>
 
-            <div className="section-label"><span className="section-label-prefix">&gt; </span>time series</div>
-            <TimeSeriesChart
-              facilityId={facilityId}
-              metrics={metrics || []}
-              assets={dashboard.asset_statuses || []}
-            />
+            <div className="section-gap">
+              <div className="section-label"><span className="section-label-prefix">&gt; </span>time series</div>
+              <TimeSeriesChart
+                facilityId={facilityId}
+                metrics={metrics || []}
+                assets={dashboard.asset_statuses || []}
+              />
+            </div>
 
-            <div className="section-label"><span className="section-label-prefix">&gt; </span>asset registry</div>
-            <AssetTable assets={dashboard.asset_statuses} />
+            <div>
+              <div className="section-label"><span className="section-label-prefix">&gt; </span>asset registry</div>
+              <AssetTable assets={dashboard.asset_statuses} />
+            </div>
+
+            <div className="page-footer">
+              <span>cv::plant_monitor v1.0 // fastapi + react + ant design</span>
+              <span>polling: 15s // data gen: 30s</span>
+            </div>
           </>
         ) : null}
       </Content>

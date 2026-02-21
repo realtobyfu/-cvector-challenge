@@ -70,7 +70,7 @@ body {
   justify-content: space-between;
   background: var(--bg) !important;
   border-bottom: 2px solid var(--border-strong);
-  padding: 0 24px !important;
+  padding: 0 32px !important;
   height: 52px !important;
   line-height: 52px !important;
   position: sticky;
@@ -170,17 +170,20 @@ body {
 
 /* ── Content ── */
 .app-content {
-  padding: 20px 24px 40px;
-  max-width: 1440px;
+  padding: 28px 32px 56px;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+}
+
+.section-gap {
+  margin-bottom: 36px;
 }
 
 /* ── Status overview row ── */
 .status-overview {
   display: flex;
   gap: 10px;
-  margin-bottom: 24px;
 }
 
 .status-pill {
@@ -228,7 +231,6 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
-  margin-bottom: 24px;
 }
 
 .metric-card {
@@ -297,7 +299,6 @@ body {
 .chart-section {
   background: var(--bg);
   border: 1px solid var(--border);
-  margin-bottom: 24px;
 }
 
 /* Chart header bar */
@@ -561,6 +562,18 @@ body {
   font-weight: 400;
   margin-left: 1px;
   font-size: 11px;
+}
+
+/* ── Footer ── */
+.page-footer {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-4);
 }
 
 /* ── Responsive ── */

@@ -134,7 +134,7 @@
         "npm run build passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Final pass. Check every component against design-reference.html. Verify with Playwright if available."
     }
   ]
