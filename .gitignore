@@ -91,3 +91,13 @@ prd.json
 Secrets.swift
 
 old-context/
+
+### CVector Plant Monitor ###
+frontend/node_modules/
+frontend/dist/
+*.db
+.derived/
+.playwright-mcp/
+.ralph-last-message*.txt
+*-verification.png
+__pycache__/

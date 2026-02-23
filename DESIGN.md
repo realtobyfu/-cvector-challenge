@@ -1,131 +1,153 @@
-# Grove — Product + UX Update Spec (Feb 2026)
+# CVector Plant Monitor — Design Specification
 
-## Why this update exists
+## Aesthetic Direction: Terminal Light
 
-This spec replaces the previous redesign doc with a reality-checked update based on the current codebase.  
-Goal: fold UI/UX feedback directly into feature priorities so the next Ralph loop executes the highest-leverage changes first.
+Brutalist, monospace, engineering-tool aesthetic in a legible light-mode execution.
+Inspired by industrial control systems and terminal UIs, but designed for 8-hour readability.
 
-## Current state snapshot (verified in code)
+**Key identity markers:**
+- `> ` prefix on section labels (green accent)
+- `//` separators in detail text (e.g., "3 assets // avg 437.3")
+- `cv::plant_monitor` branding in header
+- Full monospace typography throughout
+- Hard borders on containers, no gratuitous border-radius
+- White background — clean, professional, not dark-mode
 
-### What is already strong
-- **Core IA and flows are real and usable**: Home, Library, Boards, Courses, Graph, Inspector, Chat.
-- **Dialectics core is mature**: agentic loop, write tools (`create_board`, `create_synthesis`), save-as-note/reflection/connection actions.
-- **Library retrieval is strong**: persistent search with debounce, board filter chips, discuss action from list + inspector.
-- **Capture flow is fast**: low-friction entry + board suggestions + auto-connect.
-- **Dialectics prompt logic improved**: system prompt now explicitly includes Socratic/Hegelian/Nietzschean mode selection.
-- **Build health is better**: `tuist test` currently passes.
+## Color Palette
 
-### What is materially misaligned
-- Home now surfaces up to **5** starter bubbles, not the intended 2-3.
-- Home starter handoff can lose ORGANIZE context and uses a display-prompt path that injects assistant text instead of sending a first user turn.
-- Wiki-links are visually styled but not truly interactive in `MarkdownTextView`.
-- Conversation history is browsable but not searchable.
-- Global search overlay still executes synchronous full fetches per keystroke and lacks autofocus.
-- Nudge settings/model still expose removed categories (streak, continue-course, connection prompts, smart categories) even though engine only creates resurface + stale inbox.
-- Cmd+Shift+K Quick Capture command posts a notification with no receiver.
-- Product copy and shortcuts docs drift from actual behavior (Dialectics naming, Home/Inbox label mismatch).
-- Accessibility semantics are thin for icon-heavy UI.
-- Secondary/tertiary token contrast remains below readable thresholds for common text sizes.
-- Graph edge semantics are hard to interpret (no legend/type filters).
-- Hidden zero-size buttons are still used for keyboard handling in triage/detail surfaces.
+```css
+:root {
+  /* Backgrounds */
+  --bg:           #ffffff;     /* page background */
+  --bg-subtle:    #f7f6f4;     /* table headers, chart footer, hover states */
+  --bg-inset:     #f0eeea;     /* chart grid lines */
 
-## Opinionated product decisions
+  /* Borders */
+  --border:        #e2dfda;    /* card borders, table dividers */
+  --border-strong: #1a1a1a;    /* section boundaries (header, table header, status bar) */
 
-1. **Home must be decision-light, not feed-like.**
-   - 2-3 contextual starters are enough.
-   - More than 3 reduces starter quality and increases cognitive load.
+  /* Text hierarchy */
+  --text:    #1a1a1a;          /* primary — headings, values, asset names */
+  --text-2:  #5c5752;          /* secondary — body text, chart labels */
+  --text-3:  #908a82;          /* tertiary — section labels, type tags, reading labels */
+  --text-4:  #b5afa7;          /* quaternary — units, faint details, footer */
 
-2. **A starter is a user intent, not assistant content.**
-   - Tapping a starter should create a user message and preserve any attached context (especially ORGANIZE cluster IDs).
-   - Assistant-injected “display prompt” openings are ambiguous and weaken traceability.
+  /* Semantic colors */
+  --green:     #1a7a4f;        /* primary accent, operational status, section prefixes */
+  --green-bg:  #eaf6f0;        /* operational pill background */
+  --amber:     #b06e14;        /* warning status */
+  --amber-bg:  #fdf3e4;        /* warning pill background */
+  --red:       #c43b3b;        /* critical status */
+  --red-bg:    #fde8e8;        /* critical pill background */
+  --blue:      #3a6ba5;        /* chart secondary line, consumption metrics */
+}
+```
 
-3. **Wiki-links are a navigation contract, not styling.**
-   - If text looks like `[[Item]]`, it must be tappable everywhere markdown is rendered.
+## Typography
 
-4. **History without search is archive, not memory.**
-   - Dialectics history must be filterable by title + content.
+**One family: IBM Plex Mono** — monospace throughout. No sans-serif body text.
 
-5. **Settings must describe reality.**
-   - Dead nudge categories must not remain visible as active controls.
+| Use | Weight | Size | Color |
+|-----|--------|------|-------|
+| Metric values | 700 | 34px | `--text` |
+| Asset names, headings | 700 | 13–16px | `--text` |
+| Body text, reading values | 700 | 12–13px | `--text` |
+| Section labels (uppercase) | 700 | 10px | `--text-3` |
+| Reading labels | 500 | 12px | `--text-3` |
+| Detail text, units | 400 | 11px | `--text-4` |
+| System ID in header | 700 | 13px | `--text` + `--green` |
 
-6. **Keyboard shortcuts must be scoped.**
-   - Hidden button hacks are brittle and conflict-prone in editing contexts.
+**Letter spacing**: Section labels use `2.5px`. Type tags use `1px`. Body text uses `0`.
 
-7. **Readability is non-negotiable.**
-   - Tertiary/muted text tokens must meet practical contrast targets in both themes.
+## Component Specifications
 
-8. **Interpretability beats clever visuals in graph surfaces.**
-   - Add explicit legend and relationship type toggles.
+### Header
+- Height: 52px
+- Bottom border: 2px solid `--border-strong`
+- Left: `cv::plant_monitor` with green `cv` prefix, pipe separator, facility name
+- Right: UTC timestamp, live indicator (green dot with pulse animation)
+- Background: white (same as page)
 
-## Updated experience contract
+### Section Labels
+- Prefix: `> ` in `--green`
+- Text: 10px, 700 weight, uppercase, 2.5px letter-spacing
+- Color: `--text-3`
+- Margin below: 10px
 
-### 1) Home
-- Show exactly one “New Conversation” card and up to 3 contextual starters.
-- Preserve structured starter metadata (label + cluster tag + cluster item IDs) through action selection.
-- Starter-to-chat handoff creates a real first user message.
-- ORGANIZE starter seeds cluster item IDs so the first assistant response can reason over the intended set.
+### Status Pills
+- Individual pills (not a connected bar), flex row with 10px gap
+- Border: 1px solid `--border` (default) or semantic color (ok/warn)
+- Background: white (default) or tinted (`--green-bg`, `--amber-bg`)
+- Content: large number (24px, 700) + small label (10px, uppercase)
+- No border-radius (or minimal, 0–2px)
 
-### 2) Dialectics
-- Use product language **Dialectics** consistently in visible copy.
-- Wiki-links in rendered assistant markdown are directly actionable.
-- Conversation history popover includes search and keyboard navigation.
-- `create_synthesis` tool output includes a wiki-link to the newly created synthesis item.
+### Metric Cards
+- Grid: 4 columns, 14px gap
+- Border: 1px solid `--border`
+- Top accent line: 3px, colored per metric type (green, blue, amber, neutral)
+- Padding: 20px
+- Label: 10px uppercase, `--text-3`
+- Value: 34px, 700 weight, `--text`
+- Unit: 14px, `--text-3`, inline after value
+- Detail: 11px, `--text-4`, uses `//` separator. Highlight spans in `--text-2`
+- Hover: border darkens to `--text-3`
 
-### 3) Library + Search
-- Keep existing library search architecture (already good) and maintain debounce behavior.
-- Improve global search overlay for keyboard-first use:
-  - autofocus input on open,
-  - debounce with cancellation,
-  - avoid synchronous all-entity fetch loops on every keypress,
-  - use button semantics for results.
+### Time Series Chart
+- Container: 1px solid `--border`
+- Header: metric label with green highlight, time range buttons (1H/2H/6H/12H/24H)
+- Time buttons: connected strip, active state = black fill white text
+- Chart area: 300px height, light grid lines (`--bg-inset`)
+- Line styles: solid for primary lines, dashed for secondary. 2px stroke width.
+- Gradient fills: very subtle, 8% opacity top fading to 0%
+- End dots: 3.5px radius circles at the latest data point
+- Footer: `--bg-subtle` background, legend with 20px color bars and current values
+- Y-axis labels: `--text-4`, 10px, right-aligned
+- X-axis labels: `--text-4`, 10px, centered
 
-### 4) Capture + emergence
-- Keep post-save board suggestion pattern.
-- Standardize board suggestion auto-dismiss to **5 seconds** via one shared constant.
-- Keep board emergence behavior (ORGANIZE prompt bubbles) but make context handoff reliable.
+### Asset Table (critical — this is the main data density area)
+- Container: 1px solid `--border`
+- Header row: `--bg-subtle` background, 2px bottom border (`--border-strong`)
+- Header text: 9px, 700 weight, uppercase, 2px letter-spacing, `--text-3`
+- Body rows: 16px vertical padding, 1px bottom border (`--border`)
+- Hover: `--bg-subtle`
 
-### 5) Nudges
-- Engine remains intentionally slim: resurface + stale inbox only.
-- Settings UI/model are reduced to reflect this.
-- Weekly digest remains manual-only behavior (not part of active nudge categories).
+**Readings format (Option A — inline pairs, no boxes):**
+```
+Temperature 542.8°C    Power Output 264.1 MW    RPM 3,608    Vibration 2.4 mm/s
+```
+- Layout: flex-wrap, 20px horizontal gap, 4px vertical gap
+- Label: 12px, 500 weight, `--text-3` — use FULL names (Temperature, not Temp)
+- Value: 12px, 700 weight, `--text`, 5px left margin from label
+- Unit: 11px, 400 weight, `--text-4`, 1px left margin from value
+- Line height: 1.8 for comfortable reading when wrapping
 
-### 6) Accessibility + visual system
-- Add explicit accessibility labels/hints on icon-only controls in high-traffic surfaces.
-- Raise low-contrast secondary text pairs to readable thresholds.
-- Preserve current overall visual direction while correcting readability debt.
+**Status indicator:**
+- Dot: 7px circle, colored (green/amber/red)
+- Text: 12px, 600 weight, same color as dot
+- Operational = `--green`, Warning = `--amber`, Critical = `--red`
 
-### 7) Graph
-- Keep board/tag filters.
-- Add relationship legend and type toggles for semantic clarity.
+### Footer
+- Top border: 1px solid `--border`
+- Text: 10px, `--text-4`
+- Left: system identifier. Right: polling info
+- Margin top: 40px
 
-## Implementation order (mirrors `prd.json`)
+## Interaction Patterns
 
-1. US-001 Home prompt density + fallback
-2. US-002 Starter handoff context + user-message semantics
-3. US-003 Wiki-link interactivity
-4. US-004 Searchable conversation history
-5. US-005 Global search overlay focus/perf
-6. US-006 Nudge settings/model alignment
-7. US-007 Quick Capture command wiring
-8. US-008 Naming + shortcut documentation alignment
-9. US-009 Accessibility baseline pass
-10. US-010 Contrast token correction
-11. US-011 Graph legend + relationship filters
-12. US-012 Scoped keyboard handling (remove hidden zero-size shortcuts)
-13. US-013 `create_synthesis` direct wiki-link output
-14. US-014 Board suggestion timeout alignment (5s)
+- **Facility selector**: dropdown in header, triggers full dashboard reload
+- **Time range buttons**: segmented control, active state = inverted (black bg, white text)
+- **Metric selector**: dropdown above chart, changing metric resets asset selection
+- **Asset multi-select**: multi-select dropdown, max 4 assets shown on chart
+- **Table rows**: hoverable, expandable on click (show full reading detail)
+- **Auto-refresh**: dashboard polls every 15s, chart every 30s. No spinner on refresh — data updates silently.
 
-## Out of scope for this cycle
+## Anti-patterns (do NOT do these)
 
-- Major architecture rewrites of storage/model layers.
-- New feature families beyond this alignment pass.
-- Reintroducing removed nudge strategies.
-- Large visual redesign departures from current style language.
-
-## Success definition for this cycle
-
-- Home feels focused and intentional on first open.
-- Dialectics outputs are navigable and retrievable (wiki-links + searchable history).
-- Settings no longer lie about inactive systems.
-- Keyboard-first workflows become predictable.
-- Readability and accessibility materially improve without harming speed.
+- ❌ Border-radius > 2px on data containers
+- ❌ Abbreviated labels (Temp, Pwr, Vibr) — always spell out full names
+- ❌ Boxed/chipped reading values in the asset table — use inline pairs
+- ❌ Dark mode / dark backgrounds
+- ❌ Sans-serif fonts anywhere
+- ❌ Colored backgrounds on metric cards (only the 3px top accent line)
+- ❌ Loading spinners on refresh (only on initial load)
+- ❌ Emojis in the actual app (the design reference uses them as placeholder icons)

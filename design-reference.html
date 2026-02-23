@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V6 — Plant Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f7f6f4;
+  --bg-inset: #f0eeea;
+  --border: #e2dfda;
+  --border-strong: #1a1a1a;
+  --text: #1a1a1a;
+  --text-2: #5c5752;
+  --text-3: #908a82;
+  --text-4: #b5afa7;
+  --green: #1a7a4f;
+  --green-bg: #eaf6f0;
+  --amber: #b06e14;
+  --amber-bg: #fdf3e4;
+  --red: #c43b3b;
+  --red-bg: #fde8e8;
+  --blue: #3a6ba5;
+  --mono: 'IBM Plex Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ────────────────────────────────────────
+   HEADER
+   ──────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--border-strong);
+  padding: 0 32px;
+  height: 52px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sys-id {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.sys-id .accent { color: var(--green); }
+
+.pipe {
+  color: var(--border);
+  font-weight: 400;
+}
+
+.facility-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.live-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.live-dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* ────────────────────────────────────────
+   LAYOUT
+   ──────────────────────────────────────── */
+.content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 32px 56px;
+}
+
+.sec-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+
+.sec-label::before {
+  content: '> ';
+  color: var(--green);
+}
+
+.section-gap { margin-bottom: 36px; }
+
+/* ────────────────────────────────────────
+   STATUS ROW — pill-style counters
+   ──────────────────────────────────────── */
+.status-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 36px;
+}
+
+.status-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.status-pill .sp-val {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.status-pill .sp-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-3);
+}
+
+.status-pill.total .sp-val { color: var(--text); }
+.status-pill.ok { border-color: var(--green); background: var(--green-bg); }
+.status-pill.ok .sp-val { color: var(--green); }
+.status-pill.warn { border-color: var(--amber); background: var(--amber-bg); }
+.status-pill.warn .sp-val { color: var(--amber); }
+.status-pill.crit .sp-val { color: var(--red); }
+.status-pill.off .sp-val { color: var(--text-4); }
+
+/* ────────────────────────────────────────
+   METRICS — clean grid, top accent line
+   ──────────────────────────────────────── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 36px;
+}
+
+.m-card {
+  padding: 20px;
+  border: 1px solid var(--border);
+  position: relative;
+  transition: border-color 0.15s;
+}
+
+.m-card:hover { border-color: var(--text-3); }
+
+.m-card::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px; right: -1px;
+  height: 3px;
+  background: var(--text-4);
+}
+
+.m-card:nth-child(1)::before { background: var(--green); }
+.m-card:nth-child(2)::before { background: var(--blue); }
+.m-card:nth-child(3)::before { background: var(--amber); }
+
+.m-card .m-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+
+.m-card .m-value {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.m-card .m-unit {
+  font-size: 14px;
+  color: var(--text-3);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.m-card .m-detail {
+  font-size: 11px;
+  color: var(--text-4);
+  margin-top: 10px;
+  font-weight: 400;
+}
+
+.m-card .m-detail .hl {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+/* ────────────────────────────────────────
+   CHART — bordered, clean
+   ──────────────────────────────────────── */
+.chart-box {
+  border: 1px solid var(--border);
+  margin-bottom: 36px;
+}
+
+.chart-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-top .ct-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.chart-top .ct-label span {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.time-btns { display: flex; }
+
+.t-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: -1px;
+  transition: all 0.1s;
+  letter-spacing: 0.5px;
+}
+
+.t-btn:first-child { margin-left: 0; }
+.t-btn:hover { background: var(--bg-subtle); color: var(--text); }
+.t-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); z-index: 1; }
+
+.chart-body {
+  padding: 24px;
+  height: 300px;
+}
+
+.chart-body svg { width: 100%; height: 100%; }
+
+.g-line { stroke: var(--bg-inset); stroke-width: 1; }
+.g-label { fill: var(--text-4); font-family: var(--mono); font-size: 10px; font-weight: 500; }
+
+.chart-footer {
+  display: flex;
+  gap: 28px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.cf-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-line { width: 20px; height: 3px; }
+
+.cf-val {
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* ────────────────────────────────────────
+   ASSET TABLE — Option A inline readings
+   ──────────────────────────────────────── */
+.asset-table {
+  border: 1px solid var(--border);
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.asset-table thead th {
+  text-align: left;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-3);
+  padding: 12px 20px;
+  background: var(--bg-subtle);
+  border-bottom: 2px solid var(--border-strong);
+}
+
+.asset-table tbody td {
+  padding: 16px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.asset-table tbody tr:last-child td { border-bottom: none; }
+.asset-table tbody tr:hover { background: var(--bg-subtle); }
+
+.a-name {
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.a-type {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.a-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.a-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.a-dot.ok { background: var(--green); }
+.a-dot.warn { background: var(--amber); }
+.a-status.ok { color: var(--green); }
+.a-status.warn { color: var(--amber); }
+
+/* Option A readings */
+.readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.readings .r-item {
+  white-space: nowrap;
+}
+
+.readings .r-label {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.readings .r-val {
+  color: var(--text);
+  font-weight: 700;
+  margin-left: 5px;
+}
+
+.readings .r-unit {
+  color: var(--text-4);
+  font-weight: 400;
+  margin-left: 1px;
+  font-size: 11px;
+}
+
+/* ────────────────────────────────────────
+   FOOTER
+   ──────────────────────────────────────── */
+.page-footer {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-4);
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <span class="sys-id"><span class="accent">cv</span>::plant_monitor</span>
+    <span class="pipe">|</span>
+    <span class="facility-label">Riverside Power Station — Houston, TX</span>
+  </div>
+  <div class="header-right">
+    <span>2026-02-21 08:42:15 UTC</span>
+    <span class="live-tag"><span class="live-dot"></span> Live</span>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ── Status ── -->
+  <div class="sec-label">system status</div>
+  <div class="status-row">
+    <div class="status-pill total"><span class="sp-val">8</span><span class="sp-label">Total</span></div>
+    <div class="status-pill ok"><span class="sp-val">6</span><span class="sp-label">Operational</span></div>
+    <div class="status-pill warn"><span class="sp-val">2</span><span class="sp-label">Warning</span></div>
+    <div class="status-pill crit"><span class="sp-val">0</span><span class="sp-label">Critical</span></div>
+    <div class="status-pill off"><span class="sp-val">0</span><span class="sp-label">Offline</span></div>
+  </div>
+
+  <!-- ── Metrics ── -->
+  <div class="sec-label">facility metrics</div>
+  <div class="metrics-grid">
+    <div class="m-card">
+      <div class="m-label">Power Output</div>
+      <div class="m-value">1,312<span class="m-unit">MW</span></div>
+      <div class="m-detail"><span class="hl">3</span> assets // avg 437.3</div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Power Consumption</div>
+      <div class="m-value">9.2<span class="m-unit">MW</span></div>
+      <div class="m-detail"><span class="hl">2</span> assets // avg 4.6</div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Steam Flow</div>
+      <div class="m-value">318.4<span class="m-unit">t/hr</span></div>
+      <div class="m-detail"><span class="hl">1</span> asset // boiler</div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Avg Temperature</div>
+      <div class="m-value">288.5<span class="m-unit">°C</span></div>
+      <div class="m-detail">range <span class="hl">27.4</span>–<span class="hl">542.8</span></div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Avg Pressure</div>
+      <div class="m-value">44.2<span class="m-unit">bar</span></div>
+      <div class="m-detail">range <span class="hl">33.8</span>–<span class="hl">81.2</span> // 4 assets</div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Vibration</div>
+      <div class="m-value">2.3<span class="m-unit">mm/s</span></div>
+      <div class="m-detail">range <span class="hl">1.6</span>–<span class="hl">3.1</span> // 3 assets</div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Efficiency</div>
+      <div class="m-value">92.1<span class="m-unit">%</span></div>
+      <div class="m-detail"><span class="hl">1</span> asset // boiler</div>
+    </div>
+    <div class="m-card">
+      <div class="m-label">Avg RPM</div>
+      <div class="m-value">3,602<span class="m-unit">RPM</span></div>
+      <div class="m-detail">range <span class="hl">3,571</span>–<span class="hl">3,633</span></div>
+    </div>
+  </div>
+
+  <!-- ── Chart ── -->
+  <div class="sec-label">time series</div>
+  <div class="chart-box">
+    <div class="chart-top">
+      <span class="ct-label">metric: <span>power_output</span> // MW</span>
+      <div class="time-btns">
+        <button class="t-btn">1H</button>
+        <button class="t-btn active">2H</button>
+        <button class="t-btn">6H</button>
+        <button class="t-btn">12H</button>
+        <button class="t-btn">24H</button>
+      </div>
+    </div>
+    <div class="chart-body">
+      <svg viewBox="0 0 900 252" preserveAspectRatio="none">
+        <line x1="55" y1="20" x2="880" y2="20" class="g-line"/>
+        <line x1="55" y1="77" x2="880" y2="77" class="g-line"/>
+        <line x1="55" y1="134" x2="880" y2="134" class="g-line"/>
+        <line x1="55" y1="191" x2="880" y2="191" class="g-line"/>
+
+        <text x="50" y="24" class="g-label" text-anchor="end">300</text>
+        <text x="50" y="81" class="g-label" text-anchor="end">270</text>
+        <text x="50" y="138" class="g-label" text-anchor="end">240</text>
+        <text x="50" y="195" class="g-label" text-anchor="end">210</text>
+
+        <text x="55" y="232" class="g-label" text-anchor="middle">06:45</text>
+        <text x="261" y="232" class="g-label" text-anchor="middle">07:15</text>
+        <text x="467" y="232" class="g-label" text-anchor="middle">07:45</text>
+        <text x="674" y="232" class="g-label" text-anchor="middle">08:15</text>
+        <text x="880" y="232" class="g-label" text-anchor="middle">08:42</text>
+
+        <defs>
+          <linearGradient id="fg1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1a7a4f" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#1a7a4f" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="fg3" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3a6ba5" stop-opacity="0.06"/>
+            <stop offset="100%" stop-color="#3a6ba5" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Gas Turbine A -->
+        <path d="M55,62 C140,56 225,70 310,60 C395,50 480,42 565,50 C650,58 735,48 820,40 L880,45 L880,210 L55,210 Z" fill="url(#fg1)"/>
+        <path d="M55,62 C140,56 225,70 310,60 C395,50 480,42 565,50 C650,58 735,48 820,40 L880,45" fill="none" stroke="#1a7a4f" stroke-width="2"/>
+        <circle cx="880" cy="45" r="3.5" fill="#1a7a4f"/>
+
+        <!-- Gas Turbine B -->
+        <path d="M55,78 C140,84 225,76 310,82 C395,88 480,80 565,72 C650,66 735,76 820,68 L880,64" fill="none" stroke="#b06e14" stroke-width="2" stroke-dasharray="6,4"/>
+        <circle cx="880" cy="64" r="3.5" fill="none" stroke="#b06e14" stroke-width="2"/>
+
+        <!-- Steam Turbine -->
+        <path d="M55,118 C140,110 225,124 310,116 C395,106 480,120 565,128 C650,122 735,112 820,106 L880,110 L880,210 L55,210 Z" fill="url(#fg3)"/>
+        <path d="M55,118 C140,110 225,124 310,116 C395,106 480,120 565,128 C650,122 735,112 820,106 L880,110" fill="none" stroke="#3a6ba5" stroke-width="2"/>
+        <circle cx="880" cy="110" r="3.5" fill="#3a6ba5"/>
+      </svg>
+    </div>
+    <div class="chart-footer">
+      <div class="cf-item"><div class="cf-line" style="background:#1a7a4f"></div>gas_turbine_a<span class="cf-val">264.1 MW</span></div>
+      <div class="cf-item"><div class="cf-line" style="background:#b06e14;height:2px;border-top:1px dashed #b06e14"></div>gas_turbine_b<span class="cf-val">258.7 MW</span></div>
+      <div class="cf-item"><div class="cf-line" style="background:#3a6ba5"></div>steam_turbine<span class="cf-val">789.2 MW</span></div>
+    </div>
+  </div>
+
+  <!-- ── Assets ── -->
+  <div class="sec-label">asset registry</div>
+  <table class="asset-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Status</th>
+        <th>Readings</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="a-name">Gas Turbine A</td>
+        <td class="a-type">Turbine</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">542.8</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Power Output</span><span class="r-val">264.1</span><span class="r-unit">MW</span></span>
+            <span class="r-item"><span class="r-label">RPM</span><span class="r-val">3,608</span></span>
+            <span class="r-item"><span class="r-label">Vibration</span><span class="r-val">2.4</span><span class="r-unit">mm/s</span></span>
+            <span class="r-item"><span class="r-label">Pressure</span><span class="r-val">35.2</span><span class="r-unit">bar</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Gas Turbine B</td>
+        <td class="a-type">Turbine</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">538.2</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Power Output</span><span class="r-val">258.7</span><span class="r-unit">MW</span></span>
+            <span class="r-item"><span class="r-label">RPM</span><span class="r-val">3,595</span></span>
+            <span class="r-item"><span class="r-label">Vibration</span><span class="r-val">2.1</span><span class="r-unit">mm/s</span></span>
+            <span class="r-item"><span class="r-label">Pressure</span><span class="r-val">34.8</span><span class="r-unit">bar</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Steam Turbine</td>
+        <td class="a-type">Turbine</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">535.4</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Power Output</span><span class="r-val">789.2</span><span class="r-unit">MW</span></span>
+            <span class="r-item"><span class="r-label">RPM</span><span class="r-val">3,600</span></span>
+            <span class="r-item"><span class="r-label">Vibration</span><span class="r-val">2.6</span><span class="r-unit">mm/s</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Heat Recovery Boiler</td>
+        <td class="a-type">Boiler</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">478.6</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Pressure</span><span class="r-val">79.3</span><span class="r-unit">bar</span></span>
+            <span class="r-item"><span class="r-label">Steam Flow</span><span class="r-val">318.4</span><span class="r-unit">t/hr</span></span>
+            <span class="r-item"><span class="r-label">Efficiency</span><span class="r-val">92.1</span><span class="r-unit">%</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Cooling Tower 1</td>
+        <td class="a-type">Cooling</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">27.8</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Flow Rate</span><span class="r-val">4,480</span><span class="r-unit">m³/hr</span></span>
+            <span class="r-item"><span class="r-label">Power</span><span class="r-val">3.1</span><span class="r-unit">MW</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Cooling Tower 2</td>
+        <td class="a-type">Cooling</td>
+        <td><span class="a-status warn"><span class="a-dot warn"></span>Warning</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">31.4</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Flow Rate</span><span class="r-val">4,215</span><span class="r-unit">m³/hr</span></span>
+            <span class="r-item"><span class="r-label">Power</span><span class="r-val">3.5</span><span class="r-unit">MW</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Main Transformer</td>
+        <td class="a-type">Electrical</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Voltage</span><span class="r-val">344.8</span><span class="r-unit">kV</span></span>
+            <span class="r-item"><span class="r-label">Current</span><span class="r-val">1,192</span><span class="r-unit">A</span></span>
+            <span class="r-item"><span class="r-label">Power Output</span><span class="r-val">780.4</span><span class="r-unit">MW</span></span>
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">64.2</span><span class="r-unit">°C</span></span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="a-name">Feedwater Pump</td>
+        <td class="a-type">Pump</td>
+        <td><span class="a-status ok"><span class="a-dot ok"></span>Operational</span></td>
+        <td>
+          <div class="readings">
+            <span class="r-item"><span class="r-label">Temperature</span><span class="r-val">55.2</span><span class="r-unit">°C</span></span>
+            <span class="r-item"><span class="r-label">Pressure</span><span class="r-val">44.8</span><span class="r-unit">bar</span></span>
+            <span class="r-item"><span class="r-label">Flow Rate</span><span class="r-val">812</span><span class="r-unit">m³/hr</span></span>
+            <span class="r-item"><span class="r-label">Vibration</span><span class="r-val">1.7</span><span class="r-unit">mm/s</span></span>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-footer">
+    <span>cv::plant_monitor v1.0 // fastapi + react + ant design</span>
+    <span>polling: 15s // data gen: 30s // 17,629 readings</span>
+  </div>
+
+</div>
+
+</body>
+</html>
