@@ -17,13 +17,17 @@ Background:
 
 import asyncio
 import math
+import os
 import random
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 
@@ -358,3 +362,20 @@ def get_facility_metrics(facility_id: int, db: Session = Depends(get_db)):
         .all()
     )
     return [{"metric_name": r[0], "unit": r[1]} for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Serve frontend static files (production only)
+# ---------------------------------------------------------------------------
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve index.html for all non-API routes (SPA client-side routing)."""
+        file_path = FRONTEND_DIST / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIST / "index.html")
